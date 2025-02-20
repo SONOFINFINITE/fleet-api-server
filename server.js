@@ -99,11 +99,12 @@ async function getCachedData(type) {
             const sheetName = type === 'today' ? 'выводДеньДеньги (СЕГОДНЯ)' : 'выводДеньДеньги (ВЧЕРА)';
             cacheEntry.data = await getSheetData('C20:L29', sheetName);
             cacheEntry.lastUpdate = now;
-            console.log(`Кеш обновлен для ${type} в ${new Date().toLocaleTimeString()}`);
+            console.log(`Кэш обновлен для ${type} в ${new Date().toLocaleTimeString()}`);
         } catch (error) {
+            console.error(`Ошибка обновления кеша для ${type}:`, error);
             // Если произошла ошибка и у нас есть старые данные, используем их
             if (cacheEntry.data) {
-                console.warn(`Ошибка обновления кеша для ${type}, используем старые данные`);
+                console.warn(`Используем старые данные для ${type}`);
             } else {
                 throw error;
             }
@@ -281,38 +282,63 @@ async function initializeCache() {
 
 // Функция для поддержания сервера активным
 function keepAlive() {
-    const INTERVAL = 5 * 60 * 1000; // 5 минут
-    setInterval(() => {
+    const INTERVAL = 2 * 60 * 1000; // 2 минуты
+    
+    async function ping() {
         const now = new Date().toLocaleTimeString();
         console.log(`[${now}] Поддержание сервера активным...`);
-        
-        // Делаем запрос к собственному эндпоинту status
-        const options = {
-            hostname: process.env.RENDER_EXTERNAL_HOSTNAME || 'localhost',
-            port: process.env.PORT || 3000,
-            path: '/status',
-            method: 'GET'
-        };
 
-        const req = (process.env.RENDER_EXTERNAL_HOSTNAME ? https : require('http')).request(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => {
-                console.log(`[${now}] Сервер активен, статус: ${res.statusCode}`);
-            });
-        });
+        try {
+            // Обновляем кэш
+            await Promise.all([
+                getCachedData('today'),
+                getCachedData('yesterday')
+            ]);
+            console.log(`[${now}] Кэш успешно обновлен`);
+        } catch (error) {
+            console.error(`[${now}] Ошибка при обновлении кэша:`, error);
+        }
 
-        req.on('error', (error) => {
-            console.error(`[${now}] Ошибка при поддержании активности:`, error);
-        });
+        // Если мы на Render, делаем внешний запрос к нашему приложению
+        if (process.env.RENDER_EXTERNAL_URL) {
+            try {
+                const url = `${process.env.RENDER_EXTERNAL_URL}/status`;
+                const pingPromise = new Promise((resolve, reject) => {
+                    const req = https.get(url, (res) => {
+                        let data = '';
+                        res.on('data', (chunk) => { data += chunk; });
+                        res.on('end', () => {
+                            if (res.statusCode === 200) {
+                                console.log(`[${now}] Внешний пинг успешен (${res.statusCode})`);
+                                resolve(data);
+                            } else {
+                                reject(new Error(`Неожиданный статус: ${res.statusCode}`));
+                            }
+                        });
+                    });
 
-        req.end();
+                    req.on('error', reject);
+                    req.setTimeout(5000, () => {
+                        req.destroy();
+                        reject(new Error('Таймаут запроса'));
+                    });
 
-        // Обновляем кэш
-        Promise.all([
-            getCachedData('today'),
-            getCachedData('yesterday')
-        ]).catch(console.error);
+                    req.end();
+                });
+
+                await pingPromise;
+            } catch (error) {
+                console.error(`[${now}] Ошибка внешнего пинга:`, error.message);
+            }
+        }
+    }
+
+    // Запускаем пинг сразу
+    ping().catch(console.error);
+
+    // Устанавливаем интервал
+    return setInterval(() => {
+        ping().catch(console.error);
     }, INTERVAL);
 }
 

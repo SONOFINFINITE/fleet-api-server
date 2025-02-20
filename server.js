@@ -1,8 +1,6 @@
 const express = require('express');
 const { google } = require('googleapis');
 const cors = require('cors');
-const http = require('http');
-const https = require('https');
 require('dotenv').config();
 
 const app = express();
@@ -86,9 +84,15 @@ async function getCachedData(type) {
     return cacheEntry.data;
 }
 
-// Эндпоинт для пинга
-app.get('/ping', (req, res) => {
-    res.send('pong');
+// Эндпоинт для проверки статуса
+app.get('/status', (req, res) => {
+    res.json({
+        status: 'ok',
+        lastUpdate: {
+            today: new Date(cache.today.lastUpdate).toISOString(),
+            yesterday: new Date(cache.yesterday.lastUpdate).toISOString()
+        }
+    });
 });
 
 // Эндпоинт для получения данных за сегодня
@@ -122,38 +126,20 @@ async function initializeCache() {
     }
 }
 
-// Функция самопинга
-function setupPing() {
-    const PING_INTERVAL = 14 * 60 * 1000; // 14 минут
-    const appUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
-    
+// Функция для поддержания сервера активным
+function keepAlive() {
+    const INTERVAL = 14 * 60 * 1000; // 14 минут
     setInterval(() => {
-        const url = new URL(appUrl + '/ping');
-        const httpModule = url.protocol === 'https:' ? https : http;
-        
-        const pingPromise = new Promise((resolve, reject) => {
-            httpModule.get(url, (res) => {
-                if (res.statusCode === 200) {
-                    console.log(`[${new Date().toLocaleTimeString()}] Пинг успешен`);
-                    resolve();
-                } else {
-                    reject(new Error(`Пинг неудачен: ${res.statusCode}`));
-                }
-            }).on('error', (err) => {
-                console.error('Ошибка пинга:', err);
-                reject(err);
-            });
-        });
-
-        // Обработка ошибок пинга
-        pingPromise.catch((error) => {
-            console.error('Ошибка при выполнении пинга:', error);
-        });
-    }, PING_INTERVAL);
+        const now = new Date().toLocaleTimeString();
+        console.log(`[${now}] Сервер активен`);
+        // Обновляем кеш, если нужно
+        getCachedData('today').catch(console.error);
+        getCachedData('yesterday').catch(console.error);
+    }, INTERVAL);
 }
 
 app.listen(port, () => {
     console.log(`Сервер запущен на порту ${port}`);
     initializeCache();
-    setupPing(); // Запускаем самопинг
+    keepAlive(); // Запускаем поддержание активности
 }); 

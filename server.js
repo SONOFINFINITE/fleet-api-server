@@ -282,64 +282,29 @@ async function initializeCache() {
 
 // Функция для поддержания сервера активным
 function keepAlive() {
-    const INTERVAL = 2 * 60 * 1000; // 2 минуты
+    const INTERVAL = 5 * 60 * 1000; // 5 минут
     
-    async function ping() {
+    function ping() {
         const now = new Date().toLocaleTimeString();
         console.log(`[${now}] Поддержание сервера активным...`);
 
-        try {
-            // Обновляем кэш
-            await Promise.all([
-                getCachedData('today'),
-                getCachedData('yesterday')
-            ]);
-            console.log(`[${now}] Кэш успешно обновлен`);
-        } catch (error) {
-            console.error(`[${now}] Ошибка при обновлении кэша:`, error);
-        }
-
-        // Если мы на Render, делаем внешний запрос к нашему приложению
-        if (process.env.RENDER_EXTERNAL_URL) {
-            try {
-                const url = `${process.env.RENDER_EXTERNAL_URL}/status`;
-                const pingPromise = new Promise((resolve, reject) => {
-                    const req = https.get(url, (res) => {
-                        let data = '';
-                        res.on('data', (chunk) => { data += chunk; });
-                        res.on('end', () => {
-                            if (res.statusCode === 200) {
-                                console.log(`[${now}] Внешний пинг успешен (${res.statusCode})`);
-                                resolve(data);
-                            } else {
-                                reject(new Error(`Неожиданный статус: ${res.statusCode}`));
-                            }
-                        });
-                    });
-
-                    req.on('error', reject);
-                    req.setTimeout(5000, () => {
-                        req.destroy();
-                        reject(new Error('Таймаут запроса'));
-                    });
-
-                    req.end();
-                });
-
-                await pingPromise;
-            } catch (error) {
-                console.error(`[${now}] Ошибка внешнего пинга:`, error.message);
+        // Делаем запрос к собственному эндпоинту
+        app._router.handle({ 
+            method: 'GET',
+            url: '/status',
+            app
+        }, {
+            send: (data) => {
+                console.log(`[${now}] Сервер активен`);
             }
-        }
+        }, () => {});
     }
 
     // Запускаем пинг сразу
-    ping().catch(console.error);
+    ping();
 
     // Устанавливаем интервал
-    return setInterval(() => {
-        ping().catch(console.error);
-    }, INTERVAL);
+    return setInterval(ping, INTERVAL);
 }
 
 app.listen(port, () => {

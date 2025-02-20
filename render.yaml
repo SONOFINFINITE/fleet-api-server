@@ -11,11 +11,6 @@ services:
         value: 3000
       - key: TZ
         value: Europe/Moscow
-      - key: RENDER_EXTERNAL_URL
-        fromService:
-          name: fleet-api-server
-          type: web
-          property: url
       - key: GOOGLE_CLIENT_EMAIL
         sync: false
       - key: GOOGLE_PRIVATE_KEY

@@ -6,6 +6,21 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Логирование всех необработанных ошибок
+process.on('uncaughtException', (error) => {
+    console.error('Необработанная ошибка:', error);
+});
+
+process.on('unhandledRejection', (error) => {
+    console.error('Необработанное отклонение промиса:', error);
+});
+
+// Логирование переменных окружения (без приватных данных)
+console.log('Режим запуска:', process.env.NODE_ENV);
+console.log('Порт:', process.env.PORT);
+console.log('Email сервисного аккаунта настроен:', !!process.env.GOOGLE_CLIENT_EMAIL);
+console.log('Приватный ключ настроен:', !!process.env.GOOGLE_PRIVATE_KEY);
+
 app.use(cors());
 app.use(express.json());
 
@@ -39,11 +54,13 @@ const spreadsheetId = '1KyujbMsY2qGHMTnYSySgqdTY0vT66pjYMHTJ6dOkgGs';
 // Функция для получения данных из таблицы
 async function getSheetData(range, sheetName) {
     try {
+        console.log(`Получение данных из таблицы. Диапазон: ${range}, Лист: ${sheetName}`);
         const response = await sheets.spreadsheets.values.get({
             spreadsheetId,
             range: `'${sheetName}'!${range}`
         });
 
+        console.log(`Получено строк: ${response.data.values?.length || 0}`);
         const rows = response.data.values || [];
         return rows.map(row => ({
             rank: row[0] || '',
@@ -55,6 +72,12 @@ async function getSheetData(range, sheetName) {
         }));
     } catch (error) {
         console.error('Ошибка при получении данных:', error);
+        console.error('Детали ошибки:', {
+            message: error.message,
+            code: error.code,
+            stack: error.stack,
+            response: error.response?.data
+        });
         throw error;
     }
 }
@@ -140,6 +163,8 @@ function keepAlive() {
 
 app.listen(port, () => {
     console.log(`Сервер запущен на порту ${port}`);
+    console.log('Версия Node.js:', process.version);
+    console.log('Платформа:', process.platform);
     initializeCache();
     keepAlive(); // Запускаем поддержание активности
 }); 

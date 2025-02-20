@@ -42,8 +42,8 @@ const cache = {
     }
 };
 
-// Время жизни кеша (1 час)
-const CACHE_TTL = 60 * 60 * 1000;
+// Время жизни кеша (5 минут)
+const CACHE_TTL = 5 * 60 * 1000;
 
 // Конфигурация Google Sheets API
 const auth = new google.auth.GoogleAuth({
@@ -141,6 +141,43 @@ app.get('/top/money/yesterday', async (req, res) => {
         res.json(data);
     } catch (error) {
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// Эндпоинт для принудительного обновления кэша
+app.get('/refresh', async (req, res) => {
+    try {
+        console.log('Принудительное обновление кэша...');
+        await Promise.all([
+            getCachedData('today'),
+            getCachedData('yesterday')
+        ]);
+        
+        // Сбрасываем время последнего обновления
+        cache.today.lastUpdate = 0;
+        cache.yesterday.lastUpdate = 0;
+        
+        // Получаем свежие данные
+        const [todayData, yesterdayData] = await Promise.all([
+            getCachedData('today'),
+            getCachedData('yesterday')
+        ]);
+
+        res.json({
+            status: 'success',
+            message: 'Кэш успешно обновлен',
+            data: {
+                today: todayData,
+                yesterday: yesterdayData
+            }
+        });
+    } catch (error) {
+        console.error('Ошибка при обновлении кэша:', error);
+        res.status(500).json({
+            status: 'error',
+            message: 'Ошибка при обновлении кэша',
+            error: error.message
+        });
     }
 });
 
@@ -244,13 +281,38 @@ async function initializeCache() {
 
 // Функция для поддержания сервера активным
 function keepAlive() {
-    const INTERVAL = 14 * 60 * 1000; // 14 минут
+    const INTERVAL = 5 * 60 * 1000; // 5 минут
     setInterval(() => {
         const now = new Date().toLocaleTimeString();
-        console.log(`[${now}] Сервер активен`);
-        // Обновляем кеш, если нужно
-        getCachedData('today').catch(console.error);
-        getCachedData('yesterday').catch(console.error);
+        console.log(`[${now}] Поддержание сервера активным...`);
+        
+        // Делаем запрос к собственному эндпоинту status
+        const options = {
+            hostname: process.env.RENDER_EXTERNAL_HOSTNAME || 'localhost',
+            port: process.env.PORT || 3000,
+            path: '/status',
+            method: 'GET'
+        };
+
+        const req = (process.env.RENDER_EXTERNAL_HOSTNAME ? https : require('http')).request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                console.log(`[${now}] Сервер активен, статус: ${res.statusCode}`);
+            });
+        });
+
+        req.on('error', (error) => {
+            console.error(`[${now}] Ошибка при поддержании активности:`, error);
+        });
+
+        req.end();
+
+        // Обновляем кэш
+        Promise.all([
+            getCachedData('today'),
+            getCachedData('yesterday')
+        ]).catch(console.error);
     }, INTERVAL);
 }
 
@@ -261,4 +323,4 @@ app.listen(port, () => {
     initializeCache();
     keepAlive();
     setupSchedule(); // Запускаем планировщик
-}); 
+});

@@ -9,9 +9,13 @@ services:
     envVars:
       - key: PORT
         value: 3000
+      - key: TZ
+        value: Europe/Moscow
       - key: GOOGLE_CLIENT_EMAIL
         sync: false
       - key: GOOGLE_PRIVATE_KEY
+        sync: false
+      - key: GOOGLE_SCRIPT_URL
         sync: false
     scaling:
       minInstances: 1

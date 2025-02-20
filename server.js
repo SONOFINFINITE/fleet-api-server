@@ -1,7 +1,13 @@
 const express = require('express');
 const { google } = require('googleapis');
 const cors = require('cors');
+const https = require('https');
+const schedule = require('node-schedule');
 require('dotenv').config();
+
+// Устанавливаем часовой пояс для Москвы
+process.env.TZ = 'Europe/Moscow';
+console.log('Текущее время сервера (МСК):', new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -138,6 +144,93 @@ app.get('/top/money/yesterday', async (req, res) => {
     }
 });
 
+// Функция для запуска скрипта
+async function runScript() {
+    try {
+        const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
+        
+        if (!scriptUrl) {
+            throw new Error('URL скрипта не настроен');
+        }
+
+        const scriptPromise = new Promise((resolve, reject) => {
+            https.get(scriptUrl, (response) => {
+                if (response.statusCode === 200 || response.statusCode === 302) {
+                    console.log(`Скрипт успешно запущен по расписанию (код ${response.statusCode})`);
+                    resolve();
+                } else {
+                    reject(new Error(`Ошибка запуска скрипта: ${response.statusCode}`));
+                }
+
+                let data = '';
+                response.on('data', (chunk) => {
+                    data += chunk;
+                });
+                response.on('end', () => {
+                    console.log('Ответ от скрипта:', data);
+                });
+            }).on('error', (err) => {
+                console.error('Ошибка сетевого запроса:', err);
+                reject(err);
+            });
+        });
+
+        await scriptPromise;
+        return { status: 'success', message: 'Скрипт успешно запущен' };
+    } catch (error) {
+        console.error('Ошибка при запуске скрипта по расписанию:', error);
+        return { status: 'error', message: error.message };
+    }
+}
+
+// Эндпоинт для запуска Google Apps Script функции
+app.get('/runTransactionsForCurrentDate', async (req, res) => {
+    try {
+        const result = await runScript();
+        if (result.status === 'success') {
+            res.json(result);
+        } else {
+            res.status(500).json(result);
+        }
+    } catch (error) {
+        res.status(500).json({ 
+            status: 'error', 
+            message: 'Ошибка при запуске скрипта',
+            error: error.message 
+        });
+    }
+});
+
+// Функция настройки расписания
+function setupSchedule() {
+    // Массив с временем запуска (часы)
+    const scheduleHours = [7, 11, 15, 19, 23];
+    const scheduleMinutes = 50;
+
+    // Создаем задачи для каждого времени
+    const jobs = scheduleHours.map(hour => {
+        const cronExpression = `${scheduleMinutes} ${hour} * * *`;
+        const job = schedule.scheduleJob(cronExpression, async () => {
+            console.log(`[${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}] Запуск скрипта по расписанию...`);
+            const result = await runScript();
+            console.log('Результат выполнения по расписанию:', result);
+        });
+        return { hour, job };
+    });
+
+    // Логируем все запланированные запуски
+    console.log('Запланированные запуски (МСК):');
+    jobs.forEach(({ hour, job }) => {
+        const nextRun = job.nextInvocation().toLocaleString('ru-RU', { 
+            timeZone: 'Europe/Moscow',
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        console.log(`- ${hour}:${scheduleMinutes} (следующий запуск: ${nextRun})`);
+    });
+}
+
 // Инициализация кеша при запуске сервера
 async function initializeCache() {
     try {
@@ -166,5 +259,6 @@ app.listen(port, () => {
     console.log('Версия Node.js:', process.version);
     console.log('Платформа:', process.platform);
     initializeCache();
-    keepAlive(); // Запускаем поддержание активности
+    keepAlive();
+    setupSchedule(); // Запускаем планировщик
 }); 

@@ -283,28 +283,49 @@ async function initializeCache() {
 // Функция для поддержания сервера активным
 function keepAlive() {
     const INTERVAL = 2 * 60 * 1000; // 2 минуты
+    const http = require('http');
     
     function ping() {
         const now = new Date().toLocaleTimeString();
         console.log(`[${now}] Поддержание сервера активным...`);
 
-        // Определяем, какой протокол и URL использовать
-        const baseUrl = process.env.RENDER_EXTERNAL_URL 
-            ? `https://${process.env.RENDER_EXTERNAL_URL}`
-            : `http://localhost:${port}`;
+        // Создаем простой запрос к локальному серверу
+        const options = {
+            hostname: 'localhost',
+            port: port,
+            path: '/status',
+            method: 'GET'
+        };
 
-        // Создаем реальный HTTP-запрос к серверу
-        const requestModule = baseUrl.startsWith('https') ? https : require('http');
-        
-        requestModule.get(`${baseUrl}/status`, (resp) => {
-            if (resp.statusCode === 200) {
-                console.log(`[${now}] Сервер активен (статус: ${resp.statusCode})`);
-            } else {
-                console.warn(`[${now}] Необычный ответ сервера (статус: ${resp.statusCode})`);
-            }
-        }).on('error', (err) => {
-            console.error(`[${now}] Ошибка при пинге сервера:`, err.message);
+        console.log(`[${now}] Отправка пинга на http://${options.hostname}:${options.port}${options.path}`);
+
+        const req = http.request(options, (res) => {
+            let data = '';
+            
+            res.on('data', (chunk) => {
+                data += chunk;
+            });
+
+            res.on('end', () => {
+                console.log(`[${now}] Сервер активен (статус: ${res.statusCode})`);
+                try {
+                    const response = JSON.parse(data);
+                    console.log(`[${now}] Ответ сервера:`, response);
+                } catch (e) {
+                    console.log(`[${now}] Получены данные:`, data);
+                }
+            });
         });
+
+        req.on('error', (err) => {
+            console.error(`[${now}] Ошибка при пинге сервера:`, {
+                code: err.code,
+                message: err.message,
+                stack: err.stack
+            });
+        });
+
+        req.end();
     }
 
     // Запускаем пинг сразу

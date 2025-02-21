@@ -283,110 +283,91 @@ async function initializeCache() {
 // Функция для поддержания сервера активным
 function keepAlive() {
     const INTERVAL = 2 * 60 * 1000; // 2 минуты
-    const http = require('http');
-    let interval;
-    let isShuttingDown = false;
     
-    function ping() {
+    async function ping() {
         const now = new Date().toLocaleTimeString();
         console.log(`[${now}] Поддержание сервера активным...`);
 
-        // Создаем простой запрос к локальному серверу
+        // Делаем запрос к собственному эндпоинту status
         const options = {
-            hostname: 'localhost',
-            port: port,
+            hostname: process.env.RENDER_EXTERNAL_HOSTNAME || 'localhost',
+            port: process.env.PORT || 3000,
             path: '/status',
             method: 'GET'
         };
 
-        console.log(`[${now}] Отправка пинга на http://${options.hostname}:${options.port}${options.path}`);
-
-        const req = http.request(options, (res) => {
+        const req = (process.env.RENDER_EXTERNAL_HOSTNAME ? https : require('http')).request(options, (res) => {
             let data = '';
-            
-            res.on('data', (chunk) => {
-                data += chunk;
-            });
-
+            res.on('data', (chunk) => { data += chunk; });
             res.on('end', () => {
-                console.log(`[${now}] Сервер активен (статус: ${res.statusCode})`);
-                try {
-                    const response = JSON.parse(data);
-                    console.log(`[${now}] Ответ сервера:`, response);
-                } catch (e) {
-                    console.log(`[${now}] Получены данные:`, data);
-                }
+                console.log(`[${now}] Сервер активен, статус: ${res.statusCode}`);
             });
         });
 
-        req.on('error', (err) => {
-            console.error(`[${now}] Ошибка при пинге сервера:`, {
-                code: err.code,
-                message: err.message,
-                stack: err.stack
-            });
-
-            // Если сервер не отвечает и это не плановая остановка, пробуем перезапустить пинг
-            if (!isShuttingDown) {
-                console.log(`[${now}] Попытка перезапуска пинга...`);
-                clearInterval(interval);
-                setTimeout(() => {
-                    interval = setInterval(ping, INTERVAL);
-                    ping(); // Сразу делаем пинг после перезапуска
-                }, 5000); // Ждем 5 секунд перед перезапуском
-            }
+        req.on('error', (error) => {
+            console.error(`[${now}] Ошибка при поддержании активности:`, error);
         });
+
+        try {
+            // Обновляем кэш
+            await Promise.all([
+                getCachedData('today'),
+                getCachedData('yesterday')
+            ]);
+            console.log(`[${now}] Кэш успешно обновлен`);
+        } catch (error) {
+            console.error(`[${now}] Ошибка при обновлении кэша:`, error);
+        }
 
         req.end();
+
+        // Если мы на Render, делаем внешний запрос к нашему приложению
+        if (process.env.RENDER_EXTERNAL_URL) {
+            try {
+                const url = `${process.env.RENDER_EXTERNAL_URL}/status`;
+                const pingPromise = new Promise((resolve, reject) => {
+                    const req = https.get(url, (res) => {
+                        let data = '';
+                        res.on('data', (chunk) => { data += chunk; });
+                        res.on('end', () => {
+                            if (res.statusCode === 200) {
+                                console.log(`[${now}] Внешний пинг успешен (${res.statusCode})`);
+                                resolve(data);
+                            } else {
+                                reject(new Error(`Неожиданный статус: ${res.statusCode}`));
+                            }
+                        });
+                    });
+
+                    req.on('error', reject);
+                    req.setTimeout(5000, () => {
+                        req.destroy();
+                        reject(new Error('Таймаут запроса'));
+                    });
+
+                    req.end();
+                });
+
+                // Обновляем кэш
+                Promise.all([
+                    getCachedData('today'),
+                    getCachedData('yesterday')
+                ]).catch(console.error);
+
+                await pingPromise;
+            } catch (error) {
+                console.error(`[${now}] Ошибка внешнего пинга:`, error.message);
+            }
+        }
     }
 
     // Запускаем пинг сразу
-    ping();
+    ping().catch(console.error);
 
     // Устанавливаем интервал
-    interval = setInterval(ping, INTERVAL);
-
-    // Обработка различных сигналов завершения
-    ['SIGTERM', 'SIGINT', 'SIGUSR2'].forEach(signal => {
-        process.on(signal, () => {
-            console.log(`Получен сигнал ${signal}`);
-            if (!isShuttingDown) {
-                isShuttingDown = true;
-                console.log('Начало корректного завершения работы...');
-                
-                // Очищаем интервал
-                if (interval) {
-                    clearInterval(interval);
-                    console.log('Интервал поддержания сервера остановлен');
-                }
-
-                // Если это SIGUSR2 (сигнал для nodemon), пробуем перезапустить
-                if (signal === 'SIGUSR2') {
-                    setTimeout(() => {
-                        console.log('Попытка перезапуска сервера...');
-                        isShuttingDown = false;
-                        interval = setInterval(ping, INTERVAL);
-                        ping();
-                    }, 1000);
-                }
-            }
-        });
-    });
-
-    // Обработка необработанных исключений
-    process.on('uncaughtException', (err) => {
-        console.error('Необработанное исключение:', err);
-        if (!isShuttingDown) {
-            console.log('Попытка восстановления после ошибки...');
-            clearInterval(interval);
-            setTimeout(() => {
-                interval = setInterval(ping, INTERVAL);
-                ping();
-            }, 5000);
-        }
-    });
-
-    return interval;
+    return setInterval(() => {
+        ping().catch(console.error);
+    }, INTERVAL);
 }
 
 app.listen(port, () => {

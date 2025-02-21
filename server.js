@@ -282,29 +282,37 @@ async function initializeCache() {
 
 // Функция для поддержания сервера активным
 function keepAlive() {
-    const INTERVAL = 2 * 60 * 1000; // 5 минут
+    const INTERVAL = 2 * 60 * 1000; // 2 минуты
     
     function ping() {
         const now = new Date().toLocaleTimeString();
         console.log(`[${now}] Поддержание сервера активным...`);
 
-        // Делаем запрос к собственному эндпоинту
-        app._router.handle({ 
-            method: 'GET',
-            url: '/status',
-            app
-        }, {
-            send: (data) => {
-                console.log(`[${now}] Сервер активен`);
+        // Создаем реальный HTTP-запрос к серверу
+        https.get(`https://${process.env.RENDER_EXTERNAL_URL || 'localhost:' + port}/status`, (resp) => {
+            if (resp.statusCode === 200) {
+                console.log(`[${now}] Сервер активен (статус: ${resp.statusCode})`);
+            } else {
+                console.warn(`[${now}] Необычный ответ сервера (статус: ${resp.statusCode})`);
             }
-        }, () => {});
+        }).on('error', (err) => {
+            console.error(`[${now}] Ошибка при пинге сервера:`, err.message);
+        });
     }
 
     // Запускаем пинг сразу
     ping();
 
     // Устанавливаем интервал
-    return setInterval(ping, INTERVAL);
+    const interval = setInterval(ping, INTERVAL);
+
+    // Добавляем обработчик для очистки интервала при завершении работы
+    process.on('SIGTERM', () => {
+        clearInterval(interval);
+        console.log('Интервал поддержания сервера остановлен');
+    });
+
+    return interval;
 }
 
 app.listen(port, () => {

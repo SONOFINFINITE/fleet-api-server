@@ -288,8 +288,15 @@ function keepAlive() {
         const now = new Date().toLocaleTimeString();
         console.log(`[${now}] Поддержание сервера активным...`);
 
+        // Определяем, какой протокол и URL использовать
+        const baseUrl = process.env.RENDER_EXTERNAL_URL 
+            ? `https://${process.env.RENDER_EXTERNAL_URL}`
+            : `http://localhost:${port}`;
+
         // Создаем реальный HTTP-запрос к серверу
-        https.get(`https://${process.env.RENDER_EXTERNAL_URL || 'localhost:' + port}/status`, (resp) => {
+        const requestModule = baseUrl.startsWith('https') ? https : require('http');
+        
+        requestModule.get(`${baseUrl}/status`, (resp) => {
             if (resp.statusCode === 200) {
                 console.log(`[${now}] Сервер активен (статус: ${resp.statusCode})`);
             } else {

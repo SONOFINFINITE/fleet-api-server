@@ -43,7 +43,7 @@ const cache = {
 };
 
 // Время жизни кеша (5 минут)
-const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_TTL = 2 * 60 * 1000;
 
 // Конфигурация Google Sheets API
 const auth = new google.auth.GoogleAuth({
@@ -282,7 +282,7 @@ async function initializeCache() {
 
 // Функция для поддержания сервера активным
 function keepAlive() {
-    const INTERVAL = 5 * 60 * 1000; // 5 минут
+    const INTERVAL = 2 * 60 * 1000; // 5 минут
     
     function ping() {
         const now = new Date().toLocaleTimeString();

@@ -284,6 +284,8 @@ async function initializeCache() {
 function keepAlive() {
     const INTERVAL = 2 * 60 * 1000; // 2 минуты
     const http = require('http');
+    let interval;
+    let isShuttingDown = false;
     
     function ping() {
         const now = new Date().toLocaleTimeString();
@@ -323,6 +325,16 @@ function keepAlive() {
                 message: err.message,
                 stack: err.stack
             });
+
+            // Если сервер не отвечает и это не плановая остановка, пробуем перезапустить пинг
+            if (!isShuttingDown) {
+                console.log(`[${now}] Попытка перезапуска пинга...`);
+                clearInterval(interval);
+                setTimeout(() => {
+                    interval = setInterval(ping, INTERVAL);
+                    ping(); // Сразу делаем пинг после перезапуска
+                }, 5000); // Ждем 5 секунд перед перезапуском
+            }
         });
 
         req.end();
@@ -332,12 +344,46 @@ function keepAlive() {
     ping();
 
     // Устанавливаем интервал
-    const interval = setInterval(ping, INTERVAL);
+    interval = setInterval(ping, INTERVAL);
 
-    // Добавляем обработчик для очистки интервала при завершении работы
-    process.on('SIGTERM', () => {
-        clearInterval(interval);
-        console.log('Интервал поддержания сервера остановлен');
+    // Обработка различных сигналов завершения
+    ['SIGTERM', 'SIGINT', 'SIGUSR2'].forEach(signal => {
+        process.on(signal, () => {
+            console.log(`Получен сигнал ${signal}`);
+            if (!isShuttingDown) {
+                isShuttingDown = true;
+                console.log('Начало корректного завершения работы...');
+                
+                // Очищаем интервал
+                if (interval) {
+                    clearInterval(interval);
+                    console.log('Интервал поддержания сервера остановлен');
+                }
+
+                // Если это SIGUSR2 (сигнал для nodemon), пробуем перезапустить
+                if (signal === 'SIGUSR2') {
+                    setTimeout(() => {
+                        console.log('Попытка перезапуска сервера...');
+                        isShuttingDown = false;
+                        interval = setInterval(ping, INTERVAL);
+                        ping();
+                    }, 1000);
+                }
+            }
+        });
+    });
+
+    // Обработка необработанных исключений
+    process.on('uncaughtException', (err) => {
+        console.error('Необработанное исключение:', err);
+        if (!isShuttingDown) {
+            console.log('Попытка восстановления после ошибки...');
+            clearInterval(interval);
+            setTimeout(() => {
+                interval = setInterval(ping, INTERVAL);
+                ping();
+            }, 5000);
+        }
     });
 
     return interval;

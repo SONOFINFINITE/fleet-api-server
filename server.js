@@ -55,7 +55,7 @@ const auth = new google.auth.GoogleAuth({
 });
 
 const sheets = google.sheets({ version: 'v4', auth });
-const spreadsheetId = '1KyujbMsY2qGHMTnYSySgqdTY0vT66pjYMHTJ6dOkgGs';
+const spreadsheetId = '1859qPp4q0cyM6P1p6G4KiWuVR5-JmPTTlIseX7P2Lv0';
 
 // Функция для получения данных из таблицы
 async function getSheetData(range, sheetName) {
@@ -288,26 +288,6 @@ function keepAlive() {
         const now = new Date().toLocaleTimeString();
         console.log(`[${now}] Поддержание сервера активным...`);
 
-        // Делаем запрос к собственному эндпоинту status
-        const options = {
-            hostname: process.env.RENDER_EXTERNAL_HOSTNAME || 'localhost',
-            port: process.env.PORT || 3000,
-            path: '/status',
-            method: 'GET'
-        };
-
-        const req = (process.env.RENDER_EXTERNAL_HOSTNAME ? https : require('http')).request(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => {
-                console.log(`[${now}] Сервер активен, статус: ${res.statusCode}`);
-            });
-        });
-
-        req.on('error', (error) => {
-            console.error(`[${now}] Ошибка при поддержании активности:`, error);
-        });
-
         try {
             // Обновляем кэш
             await Promise.all([
@@ -318,8 +298,6 @@ function keepAlive() {
         } catch (error) {
             console.error(`[${now}] Ошибка при обновлении кэша:`, error);
         }
-
-        req.end();
 
         // Если мы на Render, делаем внешний запрос к нашему приложению
         if (process.env.RENDER_EXTERNAL_URL) {
@@ -347,12 +325,6 @@ function keepAlive() {
 
                     req.end();
                 });
-
-                // Обновляем кэш
-                Promise.all([
-                    getCachedData('today'),
-                    getCachedData('yesterday')
-                ]).catch(console.error);
 
                 await pingPromise;
             } catch (error) {

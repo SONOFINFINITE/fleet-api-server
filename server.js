@@ -46,6 +46,10 @@ const cache = {
         data: null,
         weeklyBonusSum: null,
         lastUpdate: 0
+    },
+    month: {
+        monthlyBonus: null,
+        lastUpdate: 0
     }
 };
 
@@ -217,6 +221,41 @@ app.get('/top/money/week', async (req, res) => {
         res.json({
             topList: cacheEntry.data,
             weeklyBonusSum: cacheEntry.weeklyBonusSum
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// Эндпоинт для получения месячного бонуса
+app.get('/monthlybonus', async (req, res) => {
+    try {
+        const cacheEntry = cache.month;
+        const now = Date.now();
+
+        // Проверяем, нужно ли обновить кеш
+        if (!cacheEntry.monthlyBonus || now - cacheEntry.lastUpdate > CACHE_TTL) {
+            try {
+                const response = await sheets.spreadsheets.values.get({
+                    spreadsheetId,
+                    range: `'выводДеньгиПер (МЕСЯЦ)'!F8`
+                });
+
+                cacheEntry.monthlyBonus = response.data.values?.[0]?.[0] || '0';
+                cacheEntry.lastUpdate = now;
+                console.log(`Месячный бонус обновлен: ${cacheEntry.monthlyBonus}`);
+            } catch (error) {
+                console.error('Ошибка при получении месячного бонуса:', error);
+                if (cacheEntry.monthlyBonus) {
+                    console.warn('Используем старое значение месячного бонуса');
+                } else {
+                    throw error;
+                }
+            }
+        }
+
+        res.json({
+            monthlyBonus: cacheEntry.monthlyBonus
         });
     } catch (error) {
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });

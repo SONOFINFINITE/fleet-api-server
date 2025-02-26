@@ -41,6 +41,11 @@ const cache = {
         data: null,
         dailyBonuSum: null,
         lastUpdate: 0
+    },
+    week: {
+        data: null,
+        weeklyBonusSum: null,
+        lastUpdate: 0
     }
 };
 
@@ -113,7 +118,7 @@ async function getCachedData(type) {
     // Проверяем, нужно ли обновить кеш
     if (!cacheEntry.data || !cacheEntry.dailyBonuSum || now - cacheEntry.lastUpdate > CACHE_TTL) {
         try {
-            const sheetName = type === 'today' ? 'выводДеньДеньги (СЕГОДНЯ)' : 'выводДеньДеньги (ВЧЕРА)';
+            const sheetName = type === 'today' ? 'выводДеньДеньги (СЕГОДНЯ)' : type === 'yesterday' ? 'выводДеньДеньги (ВЧЕРА)' : 'выводДеньгиПер (НЕДЕЛЯ)';
             const result = await getSheetData(['C20:L29', 'F8'], sheetName);
             cacheEntry.data = result.topList;
             cacheEntry.dailyBonuSum = result.dailyBonuSum;
@@ -161,6 +166,58 @@ app.get('/top/money/yesterday', async (req, res) => {
     try {
         const data = await getCachedData('yesterday');
         res.json(data);
+    } catch (error) {
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// Эндпоинт для получения данных за неделю
+app.get('/top/money/week', async (req, res) => {
+    try {
+        const cacheEntry = cache.week;
+        const now = Date.now();
+
+        // Проверяем, нужно ли обновить кеш
+        if (!cacheEntry.data || !cacheEntry.weeklyBonusSum || now - cacheEntry.lastUpdate > CACHE_TTL) {
+            try {
+                const [topData, bonusData] = await Promise.all([
+                    sheets.spreadsheets.values.get({
+                        spreadsheetId,
+                        range: `'выводДеньгиПер (НЕДЕЛЯ)'!C19:L28`
+                    }),
+                    sheets.spreadsheets.values.get({
+                        spreadsheetId,
+                        range: `'выводДеньгиПер (НЕДЕЛЯ)'!L8`
+                    })
+                ]);
+
+                const rows = topData.data.values || [];
+                const weeklyBonusSum = bonusData.data.values?.[0]?.[0] || '0';
+
+                cacheEntry.data = rows.map(row => ({
+                    rank: row[0] || '',
+                    phone: row[1] || '',
+                    orders: row[5] || '',
+                    hours: row[6] || '',
+                    money: row[9] || '',
+                    moneyPerHour: row[8] || ''
+                }));
+                cacheEntry.weeklyBonusSum = weeklyBonusSum;
+                cacheEntry.lastUpdate = now;
+            } catch (error) {
+                console.error('Ошибка при получении данных за неделю:', error);
+                if (cacheEntry.data && cacheEntry.weeklyBonusSum) {
+                    console.warn('Используем старые данные за неделю');
+                } else {
+                    throw error;
+                }
+            }
+        }
+
+        res.json({
+            topList: cacheEntry.data,
+            weeklyBonusSum: cacheEntry.weeklyBonusSum
+        });
     } catch (error) {
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });
     }
@@ -380,6 +437,7 @@ async function initializeCache() {
     try {
         await getCachedData('today');
         await getCachedData('yesterday');
+        await getCachedData('week');
         console.log('Кеш успешно инициализирован');
     } catch (error) {
         console.error('Ошибка при инициализации кеша:', error);
@@ -398,7 +456,8 @@ function keepAlive() {
             // Обновляем кэш
             await Promise.all([
                 getCachedData('today'),
-                getCachedData('yesterday')
+                getCachedData('yesterday'),
+                getCachedData('week')
             ]);
             console.log(`[${now}] Кэш успешно обновлен`);
         } catch (error) {

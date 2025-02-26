@@ -350,7 +350,7 @@ function setupSchedule() {
 function setupBonusCountSchedule() {
     // Массив с временем запуска (часы)
     const scheduleHours = [11];
-    const scheduleMinutes = 50;
+    const scheduleMinutes = 55;
 
     // Создаем задачи для каждого времени
     const jobs = scheduleHours.map(hour => {

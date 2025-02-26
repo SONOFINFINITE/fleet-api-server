@@ -238,7 +238,7 @@ app.get('/monthlybonus', async (req, res) => {
             try {
                 const response = await sheets.spreadsheets.values.get({
                     spreadsheetId,
-                    range: `'выводДеньгиПер (МЕСЯЦ)'!F8`
+                    range: `'выводДеньгиПер (МЕСЯЦ)'!L8`
                 });
 
                 cacheEntry.monthlyBonus = response.data.values?.[0]?.[0] || '0';

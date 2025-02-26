@@ -34,10 +34,12 @@ app.use(express.json());
 const cache = {
     today: {
         data: null,
+        dailyBonuSum: null,
         lastUpdate: 0
     },
     yesterday: {
         data: null,
+        dailyBonuSum: null,
         lastUpdate: 0
     }
 };
@@ -58,24 +60,39 @@ const sheets = google.sheets({ version: 'v4', auth });
 const spreadsheetId = '1859qPp4q0cyM6P1p6G4KiWuVR5-JmPTTlIseX7P2Lv0';
 
 // Функция для получения данных из таблицы
-async function getSheetData(range, sheetName) {
+async function getSheetData(ranges, sheetName) {
     try {
-        console.log(`Получение данных из таблицы. Диапазон: ${range}, Лист: ${sheetName}`);
-        const response = await sheets.spreadsheets.values.get({
-            spreadsheetId,
-            range: `'${sheetName}'!${range}`
-        });
+        console.log(`Получение данных из таблицы. Диапазоны: ${ranges.join(', ')}, Лист: ${sheetName}`);
+        
+        // Получаем данные из всех диапазонов
+        const [topData, totalSumData] = await Promise.all([
+            sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `'${sheetName}'!${ranges[0]}`
+            }),
+            sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `'${sheetName}'!${ranges[1]}`
+            })
+        ]);
 
-        console.log(`Получено строк: ${response.data.values?.length || 0}`);
-        const rows = response.data.values || [];
-        return rows.map(row => ({
-            rank: row[0] || '',
-            phone: row[1] || '',
-            orders: row[5] || '',
-            hours: row[6] || '',
-            money: row[9] || '',
-            moneyPerHour: row[8] || ''
-        }));
+        console.log(`Получено строк: ${topData.data.values?.length || 0}`);
+        console.log(`Получена сумма:`, totalSumData.data.values?.[0]?.[0]);
+
+        const rows = topData.data.values || [];
+        const dailyBonuSum = totalSumData.data.values?.[0]?.[0] || '0';
+
+        return {
+            topList: rows.map(row => ({
+                rank: row[0] || '',
+                phone: row[1] || '',
+                orders: row[5] || '',
+                hours: row[6] || '',
+                money: row[9] || '',
+                moneyPerHour: row[8] || ''
+            })),
+            dailyBonuSum: dailyBonuSum
+        };
     } catch (error) {
         console.error('Ошибка при получении данных:', error);
         console.error('Детали ошибки:', {
@@ -94,16 +111,17 @@ async function getCachedData(type) {
     const now = Date.now();
 
     // Проверяем, нужно ли обновить кеш
-    if (!cacheEntry.data || now - cacheEntry.lastUpdate > CACHE_TTL) {
+    if (!cacheEntry.data || !cacheEntry.dailyBonuSum || now - cacheEntry.lastUpdate > CACHE_TTL) {
         try {
             const sheetName = type === 'today' ? 'выводДеньДеньги (СЕГОДНЯ)' : 'выводДеньДеньги (ВЧЕРА)';
-            cacheEntry.data = await getSheetData('C20:L29', sheetName);
+            const result = await getSheetData(['C20:L29', 'F8'], sheetName);
+            cacheEntry.data = result.topList;
+            cacheEntry.dailyBonuSum = result.dailyBonuSum;
             cacheEntry.lastUpdate = now;
             console.log(`Кэш обновлен для ${type} в ${new Date().toLocaleTimeString()}`);
         } catch (error) {
             console.error(`Ошибка обновления кеша для ${type}:`, error);
-            // Если произошла ошибка и у нас есть старые данные, используем их
-            if (cacheEntry.data) {
+            if (cacheEntry.data && cacheEntry.dailyBonuSum) {
                 console.warn(`Используем старые данные для ${type}`);
             } else {
                 throw error;
@@ -111,7 +129,10 @@ async function getCachedData(type) {
         }
     }
 
-    return cacheEntry.data;
+    return {
+        topList: cacheEntry.data,
+        dailyBonuSum: cacheEntry.dailyBonuSum
+    };
 }
 
 // Эндпоинт для проверки статуса
@@ -183,7 +204,7 @@ app.get('/refresh', async (req, res) => {
 });
 
 // Функция для запуска скрипта
-async function runScript() {
+async function runSummaryUpdateScript() {
     try {
         const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
         
@@ -221,10 +242,68 @@ async function runScript() {
     }
 }
 
+async function runYesterdayBonusScript() {
+    try {
+        const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
+        
+        if (!scriptUrl) {
+            throw new Error('URL скрипта не настроен');
+        }
+
+        const urlWithParams = `${scriptUrl}?operation=updateBonus`;
+        console.log('Запуск скрипта обновления бонусов:', urlWithParams);
+
+        const scriptPromise = new Promise((resolve, reject) => {
+            https.get(urlWithParams, (response) => {
+                if (response.statusCode === 200 || response.statusCode === 302) {
+                    console.log(`Скрипт обновления бонусов запущен (код ${response.statusCode})`);
+                    resolve();
+                } else {
+                    reject(new Error(`Ошибка запуска скрипта: ${response.statusCode}`));
+                }
+
+                let data = '';
+                response.on('data', (chunk) => {
+                    data += chunk;
+                });
+                response.on('end', () => {
+                    console.log('Ответ от скрипта обновления бонусов:', data);
+                });
+            }).on('error', (err) => {
+                console.error('Ошибка сетевого запроса:', err);
+                reject(err);
+            });
+        });
+
+        await scriptPromise;
+        return { status: 'success', message: 'Скрипт обновления бонусов успешно запущен' };
+    } catch (error) {
+        console.error('Ошибка при запуске скрипта обновления бонусов:', error);
+        return { status: 'error', message: error.message };
+    }
+}
+
 // Эндпоинт для запуска Google Apps Script функции
 app.get('/runTransactionsForCurrentDate', async (req, res) => {
     try {
-        const result = await runScript();
+        const result = await runSummaryUpdateScript();
+        if (result.status === 'success') {
+            res.json(result);
+        } else {
+            res.status(500).json(result);
+        }
+    } catch (error) {
+        res.status(500).json({ 
+            status: 'error', 
+            message: 'Ошибка при запуске скрипта',
+            error: error.message 
+        });
+    }
+});
+
+app.get('/updatePreviousDayCashlessWithBonuses', async (req, res) => {
+    try {
+        const result = await runYesterdayBonusScript();
         if (result.status === 'success') {
             res.json(result);
         } else {
@@ -250,7 +329,7 @@ function setupSchedule() {
         const cronExpression = `${scheduleMinutes} ${hour} * * *`;
         const job = schedule.scheduleJob(cronExpression, async () => {
             console.log(`[${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}] Запуск скрипта по расписанию...`);
-            const result = await runScript();
+            const result = await runSummaryUpdateScript();
             console.log('Результат выполнения по расписанию:', result);
         });
         return { hour, job };

@@ -187,7 +187,7 @@ app.get('/top/money/week', async (req, res) => {
                     }),
                     sheets.spreadsheets.values.get({
                         spreadsheetId,
-                        range: `'выводДеньгиПер (НЕДЕЛЯ)'!L8`
+                        range: `'выводДеньгиПер (НЕДЕЛЯ)'!F8`
                     })
                 ]);
 

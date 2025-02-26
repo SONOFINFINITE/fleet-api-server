@@ -322,7 +322,7 @@ app.get('/updatePreviousDayCashlessWithBonuses', async (req, res) => {
 function setupSchedule() {
     // Массив с временем запуска (часы)
     const scheduleHours = [7, 11, 15, 19, 23];
-    const scheduleMinutes = 50;
+    const scheduleMinutes = 45;
 
     // Создаем задачи для каждого времени
     const jobs = scheduleHours.map(hour => {
@@ -347,7 +347,34 @@ function setupSchedule() {
         console.log(`- ${hour}:${scheduleMinutes} (следующий запуск: ${nextRun})`);
     });
 }
+function setupBonusCountSchedule() {
+    // Массив с временем запуска (часы)
+    const scheduleHours = [11];
+    const scheduleMinutes = 50;
 
+    // Создаем задачи для каждого времени
+    const jobs = scheduleHours.map(hour => {
+        const cronExpression = `${scheduleMinutes} ${hour} * * *`;
+        const job = schedule.scheduleJob(cronExpression, async () => {
+            console.log(`[${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}] Запуск скрипта по расписанию...`);
+            const result = await runYesterdayBonusScript();
+            console.log('Результат выполнения по расписанию:', result);
+        });
+        return { hour, job };
+    });
+
+    // Логируем все запланированные запуски
+    console.log('Запланированные запуски (МСК):');
+    jobs.forEach(({ hour, job }) => {
+        const nextRun = job.nextInvocation().toLocaleString('ru-RU', { 
+            timeZone: 'Europe/Moscow',
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        console.log(`- ${hour}:${scheduleMinutes} (следующий запуск: ${nextRun})`);
+    });
+}
 // Инициализация кеша при запуске сервера
 async function initializeCache() {
     try {
@@ -428,4 +455,5 @@ app.listen(port, () => {
     initializeCache();
     keepAlive();
     setupSchedule(); // Запускаем планировщик
+    setupBonusCountSchedule(); // Запускаем планировщик
 });

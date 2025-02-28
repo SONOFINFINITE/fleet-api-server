@@ -69,12 +69,12 @@ const sheets = google.sheets({ version: 'v4', auth });
 const spreadsheetId = '1859qPp4q0cyM6P1p6G4KiWuVR5-JmPTTlIseX7P2Lv0';
 
 // Функция для получения данных из таблицы
-async function getSheetData(ranges, sheetName) {
+async function getSheetData(ranges, sheetName, type) {
     try {
         console.log(`Получение данных из таблицы. Диапазоны: ${ranges.join(', ')}, Лист: ${sheetName}`);
         
         // Получаем данные из всех диапазонов
-        const [topData, totalSumData] = await Promise.all([
+        const [topData, bonusData] = await Promise.all([
             sheets.spreadsheets.values.get({
                 spreadsheetId,
                 range: `'${sheetName}'!${ranges[0]}`
@@ -86,10 +86,10 @@ async function getSheetData(ranges, sheetName) {
         ]);
 
         console.log(`Получено строк: ${topData.data.values?.length || 0}`);
-        console.log(`Получена сумма:`, totalSumData.data.values?.[0]?.[0]);
+        console.log(`Получен бонус:`, bonusData.data.values?.[0]?.[0]);
 
         const rows = topData.data.values || [];
-        const dailyBonuSum = totalSumData.data.values?.[0]?.[0] || '0';
+        const bonusSum = bonusData.data.values?.[0]?.[0] || '0';
 
         return {
             topList: rows.map(row => ({
@@ -100,7 +100,7 @@ async function getSheetData(ranges, sheetName) {
                 money: row[9] || '',
                 moneyPerHour: row[8] || ''
             })),
-            dailyBonuSum: dailyBonuSum
+            ...(type === 'week' ? { weeklyBonusSum: bonusSum } : { dailyBonuSum: bonusSum })
         };
     } catch (error) {
         console.error('Ошибка при получении данных:', error);
@@ -120,7 +120,7 @@ async function getCachedData(type) {
     const now = Date.now();
 
     // Проверяем, нужно ли обновить кеш
-    if (!cacheEntry.data || !cacheEntry.dailyBonuSum || now - cacheEntry.lastUpdate > CACHE_TTL) {
+    if (!cacheEntry.data || !(type === 'week' ? cacheEntry.weeklyBonusSum : cacheEntry.dailyBonuSum) || now - cacheEntry.lastUpdate > CACHE_TTL) {
         try {
             const sheetName = type === 'today' ? 'выводДеньДеньги (СЕГОДНЯ)' : 
                              type === 'yesterday' ? 'выводДеньДеньги (ВЧЕРА)' : 
@@ -130,14 +130,18 @@ async function getCachedData(type) {
                           ['C19:L28', 'F8'] : 
                           ['C20:L29', 'F8'];
 
-            const result = await getSheetData(ranges, sheetName);
+            const result = await getSheetData(ranges, sheetName, type);
             cacheEntry.data = result.topList;
-            cacheEntry.dailyBonuSum = result.dailyBonuSum;
+            if (type === 'week') {
+                cacheEntry.weeklyBonusSum = result.weeklyBonusSum;
+            } else {
+                cacheEntry.dailyBonuSum = result.dailyBonuSum;
+            }
             cacheEntry.lastUpdate = now;
             console.log(`Кэш обновлен для ${type} в ${new Date().toLocaleTimeString()}`);
         } catch (error) {
             console.error(`Ошибка обновления кеша для ${type}:`, error);
-            if (cacheEntry.data && cacheEntry.dailyBonuSum) {
+            if (cacheEntry.data && (type === 'week' ? cacheEntry.weeklyBonusSum : cacheEntry.dailyBonuSum)) {
                 console.warn(`Используем старые данные для ${type}`);
             } else {
                 throw error;
@@ -147,7 +151,7 @@ async function getCachedData(type) {
 
     return {
         topList: cacheEntry.data,
-        dailyBonuSum: cacheEntry.dailyBonuSum
+        ...(type === 'week' ? { weeklyBonusSum: cacheEntry.weeklyBonusSum } : { dailyBonuSum: cacheEntry.dailyBonuSum })
     };
 }
 

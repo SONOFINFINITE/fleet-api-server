@@ -268,7 +268,8 @@ app.get('/refresh', async (req, res) => {
         console.log('Принудительное обновление кэша...');
         await Promise.all([
             getCachedData('today'),
-            getCachedData('yesterday')
+            getCachedData('yesterday'),
+            getCachedData('week'),
         ]);
         
         // Сбрасываем время последнего обновления

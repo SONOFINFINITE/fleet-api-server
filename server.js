@@ -178,7 +178,8 @@ app.get('/top/money/yesterday', async (req, res) => {
 // Эндпоинт для получения данных за неделю
 app.get('/top/money/week', async (req, res) => {
     try {
-        const cacheEntry = cache.week;
+        const data = await getCachedData('week');
+        res.json(data);
         const now = Date.now();
 
         // Проверяем, нужно ли обновить кеш

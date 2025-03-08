@@ -388,7 +388,7 @@ app.get('/updatePreviousDayCashlessWithBonuses', async (req, res) => {
 function setupSchedule() {
     // Массив с временем запуска (часы)
     const scheduleHours = [7, 8, 12, 16, 18, 20, 23];
-    const scheduleMinutes = 35;
+    const scheduleMinutes = 40;
 
     // Создаем задачи для каждого времени
     const jobs = scheduleHours.map(hour => {
@@ -415,8 +415,8 @@ function setupSchedule() {
 }
 function setupBonusCountSchedule() {
     // Массив с временем запуска (часы)
-    const scheduleHours = [7];
-    const scheduleMinutes = 50;
+    const scheduleHours = [19];
+    const scheduleMinutes = 20;
 
     // Создаем задачи для каждого времени
     const jobs = scheduleHours.map(hour => {

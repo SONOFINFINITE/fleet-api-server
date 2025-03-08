@@ -3,6 +3,7 @@ const { google } = require('googleapis');
 const cors = require('cors');
 const https = require('https');
 const schedule = require('node-schedule');
+const zlib = require('zlib');
 require('dotenv').config();
 
 // Устанавливаем часовой пояс для Москвы
@@ -275,12 +276,31 @@ async function makeRequest(url, maxRedirects = 5) {
         const makeHttpRequest = (currentUrl, redirectCount) => {
             console.log(`Выполняется запрос к: ${currentUrl}`);
             
-            const req = https.get(currentUrl, {
+            // Разбираем URL для получения hostname
+            const urlObj = new URL(currentUrl);
+            
+            const options = {
+                hostname: urlObj.hostname,
+                path: urlObj.pathname + urlObj.search,
+                method: 'GET',
                 timeout: 30000,
                 headers: {
-                    'Cache-Control': 'no-cache'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive',
+                    'Cache-Control': 'no-cache',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1'
                 }
-            }, (response) => {
+            };
+
+            const req = https.request(options, (response) => {
+                // Обработка редиректов
                 if (response.statusCode === 302 || response.statusCode === 301) {
                     if (redirectCount >= maxRedirects) {
                         reject(new Error('Превышено максимальное количество редиректов'));
@@ -293,15 +313,28 @@ async function makeRequest(url, maxRedirects = 5) {
                     return;
                 }
 
+                // Обработка сжатых ответов
+                let stream = response;
+                if (response.headers['content-encoding'] === 'gzip') {
+                    stream = response.pipe(zlib.createGunzip());
+                } else if (response.headers['content-encoding'] === 'deflate') {
+                    stream = response.pipe(zlib.createInflate());
+                }
+
                 let data = '';
-                response.on('data', (chunk) => { 
+                stream.on('data', (chunk) => { 
                     data += chunk;
                     console.log('Получен чанк данных:', chunk.toString());
                 });
                 
-                response.on('end', () => {
+                stream.on('end', () => {
                     console.log('Получен полный ответ:', data);
                     resolve(data);
+                });
+
+                stream.on('error', (error) => {
+                    console.error('Ошибка при чтении ответа:', error);
+                    reject(error);
                 });
             });
 
@@ -444,7 +477,7 @@ app.get('/updatePreviousDayCashlessWithBonuses', async (req, res) => {
 function setupSchedule() {
     // Массив с временем запуска (часы)
     const scheduleHours = [7, 8, 12, 17, 20, 23];
-    const scheduleMinutes = 20;
+    const scheduleMinutes = 35;
 
     // Создаем задачи для каждого времени
     const jobs = scheduleHours.map(hour => {

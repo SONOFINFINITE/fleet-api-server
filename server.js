@@ -388,7 +388,7 @@ app.get('/updatePreviousDayCashlessWithBonuses', async (req, res) => {
 function setupSchedule() {
     // Массив с временем запуска (часы)
     const scheduleHours = [7, 8, 12, 16, 18, 20, 23];
-    const scheduleMinutes = 10;
+    const scheduleMinutes = 20;
 
     // Создаем задачи для каждого времени
     const jobs = scheduleHours.map(hour => {
@@ -396,39 +396,22 @@ function setupSchedule() {
         const job = schedule.scheduleJob(cronExpression, async () => {
             console.log(`[${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}] Запуск скрипта по расписанию...`);
             try {
-                const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
                 const response = await new Promise((resolve, reject) => {
-                    const options = {
-                        timeout: 180000, // 3 минуты
-                        headers: {
-                            'Cache-Control': 'no-cache'
-                        }
-                    };
-                    
-                    const req = https.get(scriptUrl, options, (res) => {
+                    const req = https.get(`${process.env.RENDER_EXTERNAL_URL}/runTransactionsForCurrentDate`, (res) => {
                         let data = '';
-                        
-                        // Устанавливаем таймаут для ответа
-                        res.setTimeout(180000); // 3 минуты
-                        
-                        res.on('data', (chunk) => { 
-                            data += chunk;
-                            console.log('Получены данные:', chunk.toString());
-                        });
-                        
+                        res.on('data', (chunk) => { data += chunk; });
                         res.on('end', () => {
-                            console.log('Получен полный ответ:', data);
-                            resolve(data);
+                            try {
+                                const result = JSON.parse(data);
+                                resolve(result);
+                            } catch (error) {
+                                reject(error);
+                            }
                         });
                     });
 
-                    req.on('error', (error) => {
-                        console.error('Ошибка запроса:', error);
-                        reject(error);
-                    });
-
-                    req.on('timeout', () => {
-                        console.error('Таймаут запроса');
+                    req.on('error', reject);
+                    req.setTimeout(30000, () => {
                         req.destroy();
                         reject(new Error('Таймаут запроса'));
                     });
@@ -465,57 +448,15 @@ function setupBonusCountSchedule() {
     const jobs = scheduleHours.map(hour => {
         const cronExpression = `${scheduleMinutes} ${hour} * * *`;
         const job = schedule.scheduleJob(cronExpression, async () => {
-            console.log(`[${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}] Запуск скрипта обновления бонусов по расписанию...`);
-            try {
-                const scriptUrl = `${process.env.GOOGLE_SCRIPT_URL}?operation=updateBonus`;
-                const response = await new Promise((resolve, reject) => {
-                    const options = {
-                        timeout: 180000, // 3 минуты
-                        headers: {
-                            'Cache-Control': 'no-cache'
-                        }
-                    };
-                    
-                    const req = https.get(scriptUrl, options, (res) => {
-                        let data = '';
-                        
-                        // Устанавливаем таймаут для ответа
-                        res.setTimeout(180000); // 3 минуты
-                        
-                        res.on('data', (chunk) => { 
-                            data += chunk;
-                            console.log('Получены данные:', chunk.toString());
-                        });
-                        
-                        res.on('end', () => {
-                            console.log('Получен полный ответ:', data);
-                            resolve(data);
-                        });
-                    });
-
-                    req.on('error', (error) => {
-                        console.error('Ошибка запроса:', error);
-                        reject(error);
-                    });
-
-                    req.on('timeout', () => {
-                        console.error('Таймаут запроса');
-                        req.destroy();
-                        reject(new Error('Таймаут запроса'));
-                    });
-
-                    req.end();
-                });
-                console.log('Результат выполнения обновления бонусов по расписанию:', response);
-            } catch (error) {
-                console.error('Ошибка при выполнении запланированной задачи обновления бонусов:', error);
-            }
+            console.log(`[${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}] Запуск скрипта по расписанию...`);
+            const result = await runYesterdayBonusScript();
+            console.log('Результат выполнения по расписанию:', result);
         });
         return { hour, job };
     });
 
     // Логируем все запланированные запуски
-    console.log('Запланированные запуски обновления бонусов (МСК):');
+    console.log('Запланированные запуски (МСК):');
     jobs.forEach(({ hour, job }) => {
         const nextRun = job.nextInvocation().toLocaleString('ru-RU', { 
             timeZone: 'Europe/Moscow',

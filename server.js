@@ -278,32 +278,65 @@ async function runSummaryUpdateScript() {
             throw new Error('URL скрипта не настроен');
         }
 
-        const scriptPromise = new Promise((resolve, reject) => {
-            https.get(scriptUrl, (response) => {
-                if (response.statusCode === 200 || response.statusCode === 302) {
-                    console.log(`Скрипт успешно запущен по расписанию (код ${response.statusCode})`);
-                    resolve();
-                } else {
-                    reject(new Error(`Ошибка запуска скрипта: ${response.statusCode}`));
-                }
-
+        // Первый запрос для запуска скрипта
+        await new Promise((resolve, reject) => {
+            const req = https.get(scriptUrl, (response) => {
                 let data = '';
-                response.on('data', (chunk) => {
-                    data += chunk;
-                });
+                response.on('data', (chunk) => { data += chunk; });
                 response.on('end', () => {
-                    console.log('Ответ от скрипта:', data);
+                    if (response.statusCode === 200 || response.statusCode === 302) {
+                        console.log(`Скрипт запущен (код ${response.statusCode}), ответ:`, data);
+                        if (data.includes('Error:')) {
+                            reject(new Error(data));
+                        } else {
+                            resolve();
+                        }
+                    } else {
+                        reject(new Error(`Ошибка запуска скрипта: ${response.statusCode}`));
+                    }
                 });
-            }).on('error', (err) => {
-                console.error('Ошибка сетевого запроса:', err);
-                reject(err);
+            }).on('error', reject);
+            
+            req.setTimeout(30000, () => {
+                req.destroy();
+                reject(new Error('Таймаут первичного запроса'));
             });
         });
 
-        await scriptPromise;
-        return { status: 'success', message: 'Скрипт успешно запущен' };
+        // Ждем некоторое время перед проверкой результата
+        console.log('Ожидание выполнения скрипта...');
+        await new Promise(resolve => setTimeout(resolve, 120000)); // 2 минуты ожидания
+
+        // Проверяем результат выполнения
+        const checkResult = await new Promise((resolve, reject) => {
+            const req = https.get(scriptUrl + '?check=true', (response) => {
+                let data = '';
+                response.on('data', (chunk) => { data += chunk; });
+                response.on('end', () => {
+                    try {
+                        console.log('Ответ от проверки:', data);
+                        if (data.includes('Error:')) {
+                            reject(new Error(data));
+                        } else if (data.includes('Completed')) {
+                            resolve(data);
+                        } else {
+                            reject(new Error('Скрипт все еще выполняется: ' + data));
+                        }
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            }).on('error', reject);
+            
+            req.setTimeout(30000, () => {
+                req.destroy();
+                reject(new Error('Таймаут проверки результата'));
+            });
+        });
+
+        return { status: 'success', message: 'Скрипт успешно выполнен', result: checkResult };
     } catch (error) {
-        console.error('Ошибка при запуске скрипта по расписанию:', error);
+        console.error('Ошибка при запуске скрипта:', error);
         return { status: 'error', message: error.message };
     }
 }
@@ -319,30 +352,63 @@ async function runYesterdayBonusScript() {
         const urlWithParams = `${scriptUrl}?operation=updateBonus`;
         console.log('Запуск скрипта обновления бонусов:', urlWithParams);
 
-        const scriptPromise = new Promise((resolve, reject) => {
-            https.get(urlWithParams, (response) => {
-                if (response.statusCode === 200 || response.statusCode === 302) {
-                    console.log(`Скрипт обновления бонусов запущен (код ${response.statusCode})`);
-                    resolve();
-                } else {
-                    reject(new Error(`Ошибка запуска скрипта: ${response.statusCode}`));
-                }
-
+        // Первый запрос для запуска скрипта
+        await new Promise((resolve, reject) => {
+            const req = https.get(urlWithParams, (response) => {
                 let data = '';
-                response.on('data', (chunk) => {
-                    data += chunk;
-                });
+                response.on('data', (chunk) => { data += chunk; });
                 response.on('end', () => {
-                    console.log('Ответ от скрипта обновления бонусов:', data);
+                    if (response.statusCode === 200 || response.statusCode === 302) {
+                        console.log(`Скрипт обновления бонусов запущен (код ${response.statusCode}), ответ:`, data);
+                        if (data.includes('Error:')) {
+                            reject(new Error(data));
+                        } else {
+                            resolve();
+                        }
+                    } else {
+                        reject(new Error(`Ошибка запуска скрипта: ${response.statusCode}`));
+                    }
                 });
-            }).on('error', (err) => {
-                console.error('Ошибка сетевого запроса:', err);
-                reject(err);
+            }).on('error', reject);
+            
+            req.setTimeout(30000, () => {
+                req.destroy();
+                reject(new Error('Таймаут первичного запроса'));
             });
         });
 
-        await scriptPromise;
-        return { status: 'success', message: 'Скрипт обновления бонусов успешно запущен' };
+        // Ждем некоторое время перед проверкой результата
+        console.log('Ожидание выполнения скрипта обновления бонусов...');
+        await new Promise(resolve => setTimeout(resolve, 120000)); // 2 минуты ожидания
+
+        // Проверяем результат выполнения
+        const checkResult = await new Promise((resolve, reject) => {
+            const req = https.get(urlWithParams + '&check=true', (response) => {
+                let data = '';
+                response.on('data', (chunk) => { data += chunk; });
+                response.on('end', () => {
+                    try {
+                        console.log('Ответ от проверки бонусов:', data);
+                        if (data.includes('Error:')) {
+                            reject(new Error(data));
+                        } else if (data.includes('Completed')) {
+                            resolve(data);
+                        } else {
+                            reject(new Error('Скрипт все еще выполняется: ' + data));
+                        }
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            }).on('error', reject);
+            
+            req.setTimeout(30000, () => {
+                req.destroy();
+                reject(new Error('Таймаут проверки результата'));
+            });
+        });
+
+        return { status: 'success', message: 'Скрипт обновления бонусов успешно выполнен', result: checkResult };
     } catch (error) {
         console.error('Ошибка при запуске скрипта обновления бонусов:', error);
         return { status: 'error', message: error.message };
@@ -387,8 +453,8 @@ app.get('/updatePreviousDayCashlessWithBonuses', async (req, res) => {
 // Функция настройки расписания
 function setupSchedule() {
     // Массив с временем запуска (часы)
-    const scheduleHours = [7, 8, 12, 16, 20, 23];
-    const scheduleMinutes = 40;
+    const scheduleHours = [7, 8, 12, 17, 20, 23];
+    const scheduleMinutes = 10;
 
     // Создаем задачи для каждого времени
     const jobs = scheduleHours.map(hour => {

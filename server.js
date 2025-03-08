@@ -388,7 +388,7 @@ app.get('/updatePreviousDayCashlessWithBonuses', async (req, res) => {
 function setupSchedule() {
     // Массив с временем запуска (часы)
     const scheduleHours = [7, 8, 11, 12, 16, 20, 23];
-    const scheduleMinutes = 40;
+    const scheduleMinutes = 55;
 
     // Создаем задачи для каждого времени
     const jobs = scheduleHours.map(hour => {
@@ -397,21 +397,43 @@ function setupSchedule() {
             console.log(`[${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}] Запуск скрипта по расписанию...`);
             try {
                 const response = await new Promise((resolve, reject) => {
-                    const req = https.get(`${process.env.RENDER_EXTERNAL_URL}/runTransactionsForCurrentDate`, (res) => {
+                    const options = {
+                        timeout: 180000, // 3 минуты
+                        headers: {
+                            'Cache-Control': 'no-cache'
+                        }
+                    };
+                    
+                    const req = https.get(`${process.env.RENDER_EXTERNAL_URL}/runTransactionsForCurrentDate`, options, (res) => {
                         let data = '';
-                        res.on('data', (chunk) => { data += chunk; });
+                        
+                        // Устанавливаем таймаут для ответа
+                        res.setTimeout(180000); // 3 минуты
+                        
+                        res.on('data', (chunk) => { 
+                            data += chunk;
+                            console.log('Получены данные:', chunk.toString());
+                        });
+                        
                         res.on('end', () => {
+                            console.log('Получен полный ответ:', data);
                             try {
                                 const result = JSON.parse(data);
                                 resolve(result);
                             } catch (error) {
+                                console.error('Ошибка парсинга ответа:', error);
                                 reject(error);
                             }
                         });
                     });
 
-                    req.on('error', reject);
-                    req.setTimeout(30000, () => {
+                    req.on('error', (error) => {
+                        console.error('Ошибка запроса:', error);
+                        reject(error);
+                    });
+
+                    req.on('timeout', () => {
+                        console.error('Таймаут запроса');
                         req.destroy();
                         reject(new Error('Таймаут запроса'));
                     });

@@ -388,40 +388,15 @@ app.get('/updatePreviousDayCashlessWithBonuses', async (req, res) => {
 function setupSchedule() {
     // Массив с временем запуска (часы)
     const scheduleHours = [7, 8, 12, 16, 18, 20, 23];
-    const scheduleMinutes = 20;
+    const scheduleMinutes = 35;
 
     // Создаем задачи для каждого времени
     const jobs = scheduleHours.map(hour => {
         const cronExpression = `${scheduleMinutes} ${hour} * * *`;
         const job = schedule.scheduleJob(cronExpression, async () => {
             console.log(`[${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}] Запуск скрипта по расписанию...`);
-            try {
-                const response = await new Promise((resolve, reject) => {
-                    const req = https.get(`${process.env.RENDER_EXTERNAL_URL}/runTransactionsForCurrentDate`, (res) => {
-                        let data = '';
-                        res.on('data', (chunk) => { data += chunk; });
-                        res.on('end', () => {
-                            try {
-                                const result = JSON.parse(data);
-                                resolve(result);
-                            } catch (error) {
-                                reject(error);
-                            }
-                        });
-                    });
-
-                    req.on('error', reject);
-                    req.setTimeout(30000, () => {
-                        req.destroy();
-                        reject(new Error('Таймаут запроса'));
-                    });
-
-                    req.end();
-                });
-                console.log('Результат выполнения по расписанию:', response);
-            } catch (error) {
-                console.error('Ошибка при выполнении запланированной задачи:', error);
-            }
+            const result = await runSummaryUpdateScript();
+            console.log('Результат выполнения по расписанию:', result);
         });
         return { hour, job };
     });
@@ -438,7 +413,6 @@ function setupSchedule() {
         console.log(`- ${hour}:${scheduleMinutes} (следующий запуск: ${nextRun})`);
     });
 }
-
 function setupBonusCountSchedule() {
     // Массив с временем запуска (часы)
     const scheduleHours = [7];
@@ -467,7 +441,6 @@ function setupBonusCountSchedule() {
         console.log(`- ${hour}:${scheduleMinutes} (следующий запуск: ${nextRun})`);
     });
 }
-
 // Инициализация кеша при запуске сервера
 async function initializeCache() {
     try {
@@ -482,7 +455,7 @@ async function initializeCache() {
 
 // Функция для поддержания сервера активным
 function keepAlive() {
-    const INTERVAL = 3 * 60 * 1000; // 2 минуты
+    const INTERVAL = 2 * 60 * 1000; // 2 минуты
     
     async function ping() {
         const now = new Date().toLocaleTimeString();

@@ -4,6 +4,7 @@ const cors = require('cors');
 const https = require('https');
 const schedule = require('node-schedule');
 const zlib = require('zlib');
+const fetch = require('node-fetch');
 require('dotenv').config();
 
 // Устанавливаем часовой пояс для Москвы
@@ -271,89 +272,31 @@ app.get('/refresh', async (req, res) => {
 });
 
 // Функция для выполнения HTTP запроса с поддержкой редиректов
-async function makeRequest(url, maxRedirects = 5) {
-    return new Promise((resolve, reject) => {
-        const makeHttpRequest = (currentUrl, redirectCount) => {
-            console.log(`Выполняется запрос к: ${currentUrl}`);
-            
-            // Разбираем URL для получения hostname
-            const urlObj = new URL(currentUrl);
-            
-            const options = {
-                hostname: urlObj.hostname,
-                path: urlObj.pathname + urlObj.search,
-                method: 'GET',
-                timeout: 30000,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'Connection': 'keep-alive',
-                    'Cache-Control': 'no-cache',
-                    'Upgrade-Insecure-Requests': '1',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'none',
-                    'Sec-Fetch-User': '?1'
-                }
-            };
+async function makeRequest(url) {
+    try {
+        console.log(`Выполняется запрос к: ${url}`);
+        
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0',
+                'Accept': 'text/html,application/json,*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'Connection': 'keep-alive'
+            },
+            redirect: 'follow',
+            timeout: 30000
+        });
 
-            const req = https.request(options, (response) => {
-                // Обработка редиректов
-                if (response.statusCode === 302 || response.statusCode === 301) {
-                    if (redirectCount >= maxRedirects) {
-                        reject(new Error('Превышено максимальное количество редиректов'));
-                        return;
-                    }
-                    
-                    const redirectUrl = response.headers.location;
-                    console.log(`Редирект на: ${redirectUrl}`);
-                    makeHttpRequest(redirectUrl, redirectCount + 1);
-                    return;
-                }
-
-                // Обработка сжатых ответов
-                let stream = response;
-                if (response.headers['content-encoding'] === 'gzip') {
-                    stream = response.pipe(zlib.createGunzip());
-                } else if (response.headers['content-encoding'] === 'deflate') {
-                    stream = response.pipe(zlib.createInflate());
-                }
-
-                let data = '';
-                stream.on('data', (chunk) => { 
-                    data += chunk;
-                    console.log('Получен чанк данных:', chunk.toString());
-                });
-                
-                stream.on('end', () => {
-                    console.log('Получен полный ответ:', data);
-                    resolve(data);
-                });
-
-                stream.on('error', (error) => {
-                    console.error('Ошибка при чтении ответа:', error);
-                    reject(error);
-                });
-            });
-
-            req.on('error', (error) => {
-                console.error('Ошибка запроса:', error);
-                reject(error);
-            });
-
-            req.on('timeout', () => {
-                console.error('Таймаут запроса');
-                req.destroy();
-                reject(new Error('Таймаут запроса'));
-            });
-
-            req.end();
-        };
-
-        makeHttpRequest(url, 0);
-    });
+        const text = await response.text();
+        console.log('Получен ответ:', text);
+        return text;
+    } catch (error) {
+        console.error('Ошибка запроса:', error);
+        throw error;
+    }
 }
 
 // Функция для запуска скрипта
@@ -366,29 +309,23 @@ async function runSummaryUpdateScript() {
         }
 
         // Первый запрос для запуска скрипта
-        const initialResponse = await makeRequest(scriptUrl);
-        console.log('Первичный ответ:', initialResponse);
+        console.log('Запуск скрипта...');
+        await fetch(scriptUrl, { 
+            method: 'GET',
+            redirect: 'follow',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0',
+                'Accept': 'text/html,application/json,*/*'
+            }
+        });
 
-        if (initialResponse.includes('Error:')) {
-            throw new Error(initialResponse);
-        }
-
-        // Ждем некоторое время перед проверкой результата
+        // Ждем некоторое время для выполнения скрипта
         console.log('Ожидание выполнения скрипта...');
         await new Promise(resolve => setTimeout(resolve, 120000)); // 2 минуты ожидания
 
-        // Проверяем результат выполнения
-        const checkResult = await makeRequest(scriptUrl + '?check=true');
-        console.log('Результат проверки:', checkResult);
-
-        if (checkResult.includes('Error:')) {
-            throw new Error(checkResult);
-        }
-
         return { 
             status: 'success', 
-            message: 'Скрипт успешно выполнен', 
-            result: checkResult 
+            message: 'Запрос на выполнение скрипта отправлен' 
         };
     } catch (error) {
         console.error('Ошибка при запуске скрипта:', error);
@@ -407,30 +344,24 @@ async function runYesterdayBonusScript() {
         const urlWithParams = `${scriptUrl}?operation=updateBonus`;
         console.log('Запуск скрипта обновления бонусов:', urlWithParams);
 
-        // Первый запрос для запуска скрипта
-        const initialResponse = await makeRequest(urlWithParams);
-        console.log('Первичный ответ бонусов:', initialResponse);
+        // Запуск скрипта
+        console.log('Запуск скрипта обновления бонусов...');
+        await fetch(urlWithParams, { 
+            method: 'GET',
+            redirect: 'follow',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0',
+                'Accept': 'text/html,application/json,*/*'
+            }
+        });
 
-        if (initialResponse.includes('Error:')) {
-            throw new Error(initialResponse);
-        }
-
-        // Ждем некоторое время перед проверкой результата
+        // Ждем некоторое время для выполнения скрипта
         console.log('Ожидание выполнения скрипта обновления бонусов...');
         await new Promise(resolve => setTimeout(resolve, 120000)); // 2 минуты ожидания
 
-        // Проверяем результат выполнения
-        const checkResult = await makeRequest(urlWithParams + '&check=true');
-        console.log('Результат проверки бонусов:', checkResult);
-
-        if (checkResult.includes('Error:')) {
-            throw new Error(checkResult);
-        }
-
         return { 
             status: 'success', 
-            message: 'Скрипт обновления бонусов успешно выполнен', 
-            result: checkResult 
+            message: 'Запрос на выполнение скрипта обновления бонусов отправлен'
         };
     } catch (error) {
         console.error('Ошибка при запуске скрипта обновления бонусов:', error);
@@ -477,7 +408,7 @@ app.get('/updatePreviousDayCashlessWithBonuses', async (req, res) => {
 function setupSchedule() {
     // Массив с временем запуска (часы)
     const scheduleHours = [7, 8, 12, 17, 20, 23];
-    const scheduleMinutes = 35;
+    const scheduleMinutes = 45;
 
     // Создаем задачи для каждого времени
     const jobs = scheduleHours.map(hour => {

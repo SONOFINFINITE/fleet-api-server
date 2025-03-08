@@ -269,30 +269,28 @@ app.get('/refresh', async (req, res) => {
     }
 });
 
-// Функция для запуска скрипта
+const SUMMARY_UPDATE_URL = "https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLivj-aQQ54CMJiNMD6GQwqOtT-2ocQjvf32gIIYRpxENZEtvxlfgeK7wmYLM5trICqrDkoWm2iMv7Bh5kjGBqIwQfkCLdiIxNd_V25M9QuCAHqWSn6zlYevVjqtLiSujUq-W5FODO1KGioKzmedg3rmELoPn5yf0EjUqbZqIVnqI43GvbDDIpuhlwz_2ddqt6lJRJei4k2VHLYvpFWSUAxQ7awoLThcQ0yIv3gpXEzIr85-Eyvbkh7eMUpugIh4NZ4kPj38qGfbtKZHP1WWoY3BNyGkGA&lib=MnrQcJfJ6VLl2zRFM2PkE9v3YuH1tHnqx";
+const BONUS_UPDATE_URL = "https://script.googleusercontent.com/macros/echo?user_content_key=eWc611T5bTtAoqUd-b_ZGh-wKALOJMsAoB9ez9HOZx2BY_4Mg7tEuYfWtuXVwNzqAZ0UuEOz5XdHOVOrlqCRzNDSK6ewYYovOJmA1Yb3SEsKFZqtv3DaNYcMrmhZHmUMWojr9NvTBuBLhyHCd5hHayoPOPPDoNh-RGTBTkE_4Gez_ydNbyQJSicqMCCNQTH74IzU3O9ErOkvDVVDLdhFXStYRSIrXtKYlW3cPZmT2Lx4xPgXxZESPkKY712Y85W2BLL4S9zEz1XPJvlgRauTjg&lib=MnrQcJfJ6VLl2zRFM2PkE9v3YuH1tHnqx";
+
 async function runSummaryUpdateScript() {
     try {
-        const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
-        
-        if (!scriptUrl) {
-            throw new Error('URL скрипта не настроен');
-        }
+        console.log('Запуск скрипта обновления сводки...');
 
         const scriptPromise = new Promise((resolve, reject) => {
-            https.get(scriptUrl, (response) => {
-                if (response.statusCode === 200 || response.statusCode === 302) {
-                    console.log(`Скрипт успешно запущен по расписанию (код ${response.statusCode})`);
-                    resolve();
-                } else {
-                    reject(new Error(`Ошибка запуска скрипта: ${response.statusCode}`));
-                }
-
+            https.get(SUMMARY_UPDATE_URL, (response) => {
                 let data = '';
                 response.on('data', (chunk) => {
                     data += chunk;
                 });
+                
                 response.on('end', () => {
                     console.log('Ответ от скрипта:', data);
+                    if (data.includes('Success: Summary update executed')) {
+                        console.log('Скрипт успешно выполнен');
+                        resolve();
+                    } else {
+                        reject(new Error('Неожиданный ответ от скрипта: ' + data));
+                    }
                 });
             }).on('error', (err) => {
                 console.error('Ошибка сетевого запроса:', err);
@@ -310,30 +308,23 @@ async function runSummaryUpdateScript() {
 
 async function runYesterdayBonusScript() {
     try {
-        const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
-        
-        if (!scriptUrl) {
-            throw new Error('URL скрипта не настроен');
-        }
-
-        const urlWithParams = `${scriptUrl}?operation=updateBonus`;
-        console.log('Запуск скрипта обновления бонусов:', urlWithParams);
+        console.log('Запуск скрипта обновления бонусов...');
 
         const scriptPromise = new Promise((resolve, reject) => {
-            https.get(urlWithParams, (response) => {
-                if (response.statusCode === 200 || response.statusCode === 302) {
-                    console.log(`Скрипт обновления бонусов запущен (код ${response.statusCode})`);
-                    resolve();
-                } else {
-                    reject(new Error(`Ошибка запуска скрипта: ${response.statusCode}`));
-                }
-
+            https.get(BONUS_UPDATE_URL, (response) => {
                 let data = '';
                 response.on('data', (chunk) => {
                     data += chunk;
                 });
+                
                 response.on('end', () => {
                     console.log('Ответ от скрипта обновления бонусов:', data);
+                    if (data.includes('Success: Bonus update executed')) {
+                        console.log('Скрипт обновления бонусов успешно выполнен');
+                        resolve();
+                    } else {
+                        reject(new Error('Неожиданный ответ от скрипта бонусов: ' + data));
+                    }
                 });
             }).on('error', (err) => {
                 console.error('Ошибка сетевого запроса:', err);
@@ -387,8 +378,8 @@ app.get('/updatePreviousDayCashlessWithBonuses', async (req, res) => {
 // Функция настройки расписания
 function setupSchedule() {
     // Массив с временем запуска (часы)
-    const scheduleHours = [7, 8, 12, 16, 18, 20, 23];
-    const scheduleMinutes = 40;
+    const scheduleHours = [7, 8, 12, 16, 18, 19, 20, 23];
+    const scheduleMinutes = 42;
 
     // Создаем задачи для каждого времени
     const jobs = scheduleHours.map(hour => {

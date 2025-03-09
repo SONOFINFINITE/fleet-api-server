@@ -384,63 +384,6 @@ app.get('/updatePreviousDayCashlessWithBonuses', async (req, res) => {
     }
 });
 
-// Функция настройки расписания
-function setupSchedule() {
-    // Массив с временем запуска (часы)
-    const scheduleHours = [7, 8, 12, 16, 20, 23];
-    const scheduleMinutes = 40;
-
-    // Создаем задачи для каждого времени
-    const jobs = scheduleHours.map(hour => {
-        const cronExpression = `${scheduleMinutes} ${hour} * * *`;
-        const job = schedule.scheduleJob(cronExpression, async () => {
-            console.log(`[${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}] Запуск скрипта по расписанию...`);
-            const result = await runSummaryUpdateScript();
-            console.log('Результат выполнения по расписанию:', result);
-        });
-        return { hour, job };
-    });
-
-    // Логируем все запланированные запуски
-    console.log('Запланированные запуски (МСК):');
-    jobs.forEach(({ hour, job }) => {
-        const nextRun = job.nextInvocation().toLocaleString('ru-RU', { 
-            timeZone: 'Europe/Moscow',
-            hour12: false,
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        console.log(`- ${hour}:${scheduleMinutes} (следующий запуск: ${nextRun})`);
-    });
-}
-function setupBonusCountSchedule() {
-    // Массив с временем запуска (часы)
-    const scheduleHours = [7];
-    const scheduleMinutes = 50;
-
-    // Создаем задачи для каждого времени
-    const jobs = scheduleHours.map(hour => {
-        const cronExpression = `${scheduleMinutes} ${hour} * * *`;
-        const job = schedule.scheduleJob(cronExpression, async () => {
-            console.log(`[${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}] Запуск скрипта по расписанию...`);
-            const result = await runYesterdayBonusScript();
-            console.log('Результат выполнения по расписанию:', result);
-        });
-        return { hour, job };
-    });
-
-    // Логируем все запланированные запуски
-    console.log('Запланированные запуски (МСК):');
-    jobs.forEach(({ hour, job }) => {
-        const nextRun = job.nextInvocation().toLocaleString('ru-RU', { 
-            timeZone: 'Europe/Moscow',
-            hour12: false,
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        console.log(`- ${hour}:${scheduleMinutes} (следующий запуск: ${nextRun})`);
-    });
-}
 // Инициализация кеша при запуске сервера
 async function initializeCache() {
     try {
@@ -522,6 +465,4 @@ app.listen(port, () => {
     console.log('Платформа:', process.platform);
     initializeCache();
     keepAlive();
-    setupSchedule(); // Запускаем планировщик
-    setupBonusCountSchedule(); // Запускаем планировщик
 });

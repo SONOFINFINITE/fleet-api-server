@@ -279,31 +279,41 @@ async function runSummaryUpdateScript() {
         }
 
         const scriptPromise = new Promise((resolve, reject) => {
-            https.get(scriptUrl, (response) => {
-                if (response.statusCode === 200 || response.statusCode === 302) {
-                    console.log(`Скрипт успешно запущен по расписанию (код ${response.statusCode})`);
-                    resolve();
-                } else {
+            const req = https.get(scriptUrl, (response) => {
+                if (response.statusCode !== 200 && response.statusCode !== 302) {
                     reject(new Error(`Ошибка запуска скрипта: ${response.statusCode}`));
+                    return;
                 }
 
                 let data = '';
                 response.on('data', (chunk) => {
                     data += chunk;
                 });
+
                 response.on('end', () => {
                     console.log('Ответ от скрипта:', data);
+                    // Резолвим промис только после получения всех данных
+                    resolve({ status: 'success', message: 'Скрипт успешно выполнен', data });
                 });
-            }).on('error', (err) => {
+            });
+
+            // Устанавливаем таймаут в 3 минуты
+            req.setTimeout(180000, () => {
+                req.destroy();
+                reject(new Error('Превышено время ожидания ответа от скрипта (3 минуты)'));
+            });
+
+            req.on('error', (err) => {
                 console.error('Ошибка сетевого запроса:', err);
                 reject(err);
             });
         });
 
-        await scriptPromise;
-        return { status: 'success', message: 'Скрипт успешно запущен' };
+        const result = await scriptPromise;
+        console.log(`Скрипт успешно выполнен в ${new Date().toLocaleTimeString()}`);
+        return result;
     } catch (error) {
-        console.error('Ошибка при запуске скрипта по расписанию:', error);
+        console.error('Ошибка при запуске скрипта:', error);
         return { status: 'error', message: error.message };
     }
 }
@@ -320,29 +330,39 @@ async function runYesterdayBonusScript() {
         console.log('Запуск скрипта обновления бонусов:', urlWithParams);
 
         const scriptPromise = new Promise((resolve, reject) => {
-            https.get(urlWithParams, (response) => {
-                if (response.statusCode === 200 || response.statusCode === 302) {
-                    console.log(`Скрипт обновления бонусов запущен (код ${response.statusCode})`);
-                    resolve();
-                } else {
+            const req = https.get(urlWithParams, (response) => {
+                if (response.statusCode !== 200 && response.statusCode !== 302) {
                     reject(new Error(`Ошибка запуска скрипта: ${response.statusCode}`));
+                    return;
                 }
 
                 let data = '';
                 response.on('data', (chunk) => {
                     data += chunk;
                 });
+
                 response.on('end', () => {
                     console.log('Ответ от скрипта обновления бонусов:', data);
+                    // Резолвим промис только после получения всех данных
+                    resolve({ status: 'success', message: 'Скрипт обновления бонусов успешно выполнен', data });
                 });
-            }).on('error', (err) => {
+            });
+
+            // Устанавливаем таймаут в 3 минуты
+            req.setTimeout(180000, () => {
+                req.destroy();
+                reject(new Error('Превышено время ожидания ответа от скрипта (3 минуты)'));
+            });
+
+            req.on('error', (err) => {
                 console.error('Ошибка сетевого запроса:', err);
                 reject(err);
             });
         });
 
-        await scriptPromise;
-        return { status: 'success', message: 'Скрипт обновления бонусов успешно запущен' };
+        const result = await scriptPromise;
+        console.log(`Скрипт обновления бонусов успешно выполнен в ${new Date().toLocaleTimeString()}`);
+        return result;
     } catch (error) {
         console.error('Ошибка при запуске скрипта обновления бонусов:', error);
         return { status: 'error', message: error.message };

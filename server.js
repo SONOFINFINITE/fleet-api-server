@@ -273,6 +273,7 @@ app.get('/refresh', async (req, res) => {
 async function runSummaryUpdateScript() {
     try {
         const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
+        const startTime = Date.now();
         
         if (!scriptUrl) {
             throw new Error('URL скрипта не настроен');
@@ -292,8 +293,12 @@ async function runSummaryUpdateScript() {
 
                 response.on('end', () => {
                     console.log('Ответ от скрипта:', data);
-                    // Резолвим промис только после получения всех данных
-                    resolve({ status: 'success', message: 'Скрипт успешно выполнен', data });
+                    const executionTime = Date.now() - startTime;
+                    const isFastExecution = executionTime < 40000;
+                    resolve({ 
+                        status: 'success', 
+                        message: 'Скрипт успешно выполнен' + (isFastExecution ? ' SPEED_DEMON' : '')
+                    });
                 });
             });
 

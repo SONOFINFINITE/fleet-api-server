@@ -294,7 +294,7 @@ async function runSummaryUpdateScript() {
                 response.on('end', () => {
                     console.log('Ответ от скрипта:', data);
                     const executionTime = Date.now() - startTime;
-                    const isFastExecution = executionTime < 40000;
+                    const isFastExecution = executionTime < 60000;
                     resolve({ 
                         status: 'success', 
                         message: 'Скрипт успешно выполнен' + (isFastExecution ? ' SPEED_DEMON' : '')

@@ -66,7 +66,7 @@ const auth = new google.auth.GoogleAuth({
 });
 
 const sheets = google.sheets({ version: 'v4', auth });
-const spreadsheetId = '1859qPp4q0cyM6P1p6G4KiWuVR5-JmPTTlIseX7P2Lv0';
+const spreadsheetId = '1ZzEEPB5tCp2hmKQJmDDhLl_Od6lG5bO_NyQGQrBDdrw';
 
 // Функция для получения данных из таблицы
 async function getSheetData(ranges, sheetName, type) {

@@ -48,6 +48,7 @@ const cache = {
         lastUpdate: 0
     },
     month: {
+        data: null,
         monthlyBonus: null,
         lastUpdate: 0
     }
@@ -120,20 +121,25 @@ async function getCachedData(type) {
     const now = Date.now();
 
     // Проверяем, нужно ли обновить кеш
-    if (!cacheEntry.data || !(type === 'week' ? cacheEntry.weeklyBonusSum : cacheEntry.dailyBonuSum) || now - cacheEntry.lastUpdate > CACHE_TTL) {
+    if (!cacheEntry.data || !(type === 'week' ? cacheEntry.weeklyBonusSum : type === 'month' ? cacheEntry.monthlyBonus : cacheEntry.dailyBonuSum) || now - cacheEntry.lastUpdate > CACHE_TTL) {
         try {
             const sheetName = type === 'today' ? 'выводДеньДеньги (СЕГОДНЯ)' : 
                              type === 'yesterday' ? 'выводДеньДеньги (ВЧЕРА)' : 
-                             'выводДеньгиПер (НЕДЕЛЯ)';
+                             type === 'week' ? 'выводДеньгиПер (НЕДЕЛЯ)' :
+                             'выводДеньгиПер (МЕСЯЦ)';
             
             const ranges = type === 'week' ? 
                           ['C19:L28', 'F8'] : 
+                          type === 'month' ?
+                          ['C19:L28', 'L8'] :
                           ['C20:L29', 'F8'];
 
             const result = await getSheetData(ranges, sheetName, type);
             cacheEntry.data = result.topList;
             if (type === 'week') {
                 cacheEntry.weeklyBonusSum = result.weeklyBonusSum;
+            } else if (type === 'month') {
+                cacheEntry.monthlyBonus = result.dailyBonuSum; // Используем dailyBonuSum для хранения месячного бонуса
             } else {
                 cacheEntry.dailyBonuSum = result.dailyBonuSum;
             }
@@ -141,7 +147,7 @@ async function getCachedData(type) {
             console.log(`Кэш обновлен для ${type} в ${new Date().toLocaleTimeString()}`);
         } catch (error) {
             console.error(`Ошибка обновления кеша для ${type}:`, error);
-            if (cacheEntry.data && (type === 'week' ? cacheEntry.weeklyBonusSum : cacheEntry.dailyBonuSum)) {
+            if (cacheEntry.data && (type === 'week' ? cacheEntry.weeklyBonusSum : type === 'month' ? cacheEntry.monthlyBonus : cacheEntry.dailyBonuSum)) {
                 console.warn(`Используем старые данные для ${type}`);
             } else {
                 throw error;
@@ -151,7 +157,9 @@ async function getCachedData(type) {
 
     return {
         topList: cacheEntry.data,
-        ...(type === 'week' ? { weeklyBonusSum: cacheEntry.weeklyBonusSum } : { dailyBonuSum: cacheEntry.dailyBonuSum })
+        ...(type === 'week' ? { weeklyBonusSum: cacheEntry.weeklyBonusSum } : 
+           type === 'month' ? { monthlyBonus: cacheEntry.monthlyBonus } :
+           { dailyBonuSum: cacheEntry.dailyBonuSum })
     };
 }
 
@@ -190,6 +198,16 @@ app.get('/top/money/yesterday', async (req, res) => {
 app.get('/top/money/week', async (req, res) => {
     try {
         const data = await getCachedData('week');
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// Эндпоинт для получения данных за месяц
+app.get('/top/money/month', async (req, res) => {
+    try {
+        const data = await getCachedData('month');
         res.json(data);
     } catch (error) {
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });
@@ -239,6 +257,7 @@ app.get('/refresh', async (req, res) => {
             getCachedData('today'),
             getCachedData('yesterday'),
             getCachedData('week'),
+            getCachedData('month'),
         ]);
         
         // Сбрасываем время последнего обновления
@@ -415,6 +434,7 @@ async function initializeCache() {
         await getCachedData('today');
         await getCachedData('yesterday');
         await getCachedData('week');
+        await getCachedData('month');
         console.log('Кеш успешно инициализирован');
     } catch (error) {
         console.error('Ошибка при инициализации кеша:', error);
@@ -434,7 +454,8 @@ function keepAlive() {
             await Promise.all([
                 getCachedData('today'),
                 getCachedData('yesterday'),
-                getCachedData('week')
+                getCachedData('week'),
+                getCachedData('month')
             ]);
             console.log(`[${now}] Кэш успешно обновлен`);
         } catch (error) {

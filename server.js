@@ -111,7 +111,7 @@ async function getSheetData(ranges, sheetName, type) {
                 money: row[9] || '',
                 moneyPerHour: row[8] || ''
             })),
-            ...(type === 'week' ? { weeklyBonusSum: bonusSum } : { dailyBonuSum: bonusSum })
+            ...(type === 'week' || type === 'lastweek' ? { weeklyBonusSum: bonusSum } : { dailyBonuSum: bonusSum })
         };
     } catch (error) {
         console.error('Ошибка при получении данных:', error);

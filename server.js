@@ -51,6 +51,16 @@ const cache = {
         data: null,
         monthlyBonus: null,
         lastUpdate: 0
+    },
+    lastweek: {
+        data: null,
+        weeklyBonusSum: null,
+        lastUpdate: 0
+    },
+    lastmonth: {
+        data: null,
+        monthlyBonus: null,
+        lastUpdate: 0
     }
 };
 
@@ -121,24 +131,26 @@ async function getCachedData(type) {
     const now = Date.now();
 
     // Проверяем, нужно ли обновить кеш
-    if (!cacheEntry.data || !(type === 'week' ? cacheEntry.weeklyBonusSum : type === 'month' ? cacheEntry.monthlyBonus : cacheEntry.dailyBonuSum) || now - cacheEntry.lastUpdate > CACHE_TTL) {
+    if (!cacheEntry.data || !(type === 'week' || type === 'lastweek' ? cacheEntry.weeklyBonusSum : type === 'month' || type === 'lastmonth' ? cacheEntry.monthlyBonus : cacheEntry.dailyBonuSum) || now - cacheEntry.lastUpdate > CACHE_TTL) {
         try {
             const sheetName = type === 'today' ? 'выводДеньДеньги (СЕГОДНЯ)' : 
                              type === 'yesterday' ? 'выводДеньДеньги (ВЧЕРА)' : 
                              type === 'week' ? 'выводДеньгиПер (НЕДЕЛЯ)' :
-                             'выводДеньгиПер (МЕСЯЦ)';
+                             type === 'month' ? 'выводДеньгиПер (МЕСЯЦ)' :
+                             type === 'lastweek' ? 'выводДеньгиПер (ПРОШЛАЯ НЕДЕЛЯ)' :
+                             'выводДеньгиПер (ПРОШЛЫЙ МЕСЯЦ)';
             
-            const ranges = type === 'week' ? 
+            const ranges = type === 'week' || type === 'lastweek' ? 
                           ['C19:L28', 'F8'] : 
-                          type === 'month' ?
+                          type === 'month' || type === 'lastmonth' ?
                           ['C19:L28', 'L8'] :
                           ['C20:L29', 'F8'];
 
             const result = await getSheetData(ranges, sheetName, type);
             cacheEntry.data = result.topList;
-            if (type === 'week') {
+            if (type === 'week' || type === 'lastweek') {
                 cacheEntry.weeklyBonusSum = result.weeklyBonusSum;
-            } else if (type === 'month') {
+            } else if (type === 'month' || type === 'lastmonth') {
                 cacheEntry.monthlyBonus = result.dailyBonuSum; // Используем dailyBonuSum для хранения месячного бонуса
             } else {
                 cacheEntry.dailyBonuSum = result.dailyBonuSum;
@@ -147,7 +159,7 @@ async function getCachedData(type) {
             console.log(`Кэш обновлен для ${type} в ${new Date().toLocaleTimeString()}`);
         } catch (error) {
             console.error(`Ошибка обновления кеша для ${type}:`, error);
-            if (cacheEntry.data && (type === 'week' ? cacheEntry.weeklyBonusSum : type === 'month' ? cacheEntry.monthlyBonus : cacheEntry.dailyBonuSum)) {
+            if (cacheEntry.data && (type === 'week' || type === 'lastweek' ? cacheEntry.weeklyBonusSum : type === 'month' || type === 'lastmonth' ? cacheEntry.monthlyBonus : cacheEntry.dailyBonuSum)) {
                 console.warn(`Используем старые данные для ${type}`);
             } else {
                 throw error;
@@ -157,8 +169,8 @@ async function getCachedData(type) {
 
     return {
         topList: cacheEntry.data,
-        ...(type === 'week' ? { weeklyBonusSum: cacheEntry.weeklyBonusSum } : 
-           type === 'month' ? { monthlyBonus: cacheEntry.monthlyBonus } :
+        ...(type === 'week' || type === 'lastweek' ? { weeklyBonusSum: cacheEntry.weeklyBonusSum } : 
+           type === 'month' || type === 'lastmonth' ? { monthlyBonus: cacheEntry.monthlyBonus } :
            { dailyBonuSum: cacheEntry.dailyBonuSum })
     };
 }
@@ -214,6 +226,26 @@ app.get('/top/money/month', async (req, res) => {
     }
 });
 
+// Эндпоинт для получения данных за прошлую неделю
+app.get('/top/money/lastweek', async (req, res) => {
+    try {
+        const data = await getCachedData('lastweek');
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// Эндпоинт для получения данных за прошлый месяц
+app.get('/top/money/lastmonth', async (req, res) => {
+    try {
+        const data = await getCachedData('lastmonth');
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
 // Эндпоинт для получения месячного бонуса
 app.get('/monthlybonus', async (req, res) => {
     try {
@@ -258,6 +290,8 @@ app.get('/refresh', async (req, res) => {
             getCachedData('yesterday'),
             getCachedData('week'),
             getCachedData('month'),
+            getCachedData('lastweek'),
+            getCachedData('lastmonth'),
         ]);
         
         // Сбрасываем время последнего обновления
@@ -435,6 +469,8 @@ async function initializeCache() {
         await getCachedData('yesterday');
         await getCachedData('week');
         await getCachedData('month');
+        await getCachedData('lastweek');
+        await getCachedData('lastmonth');
         console.log('Кеш успешно инициализирован');
     } catch (error) {
         console.error('Ошибка при инициализации кеша:', error);
@@ -455,7 +491,9 @@ function keepAlive() {
                 getCachedData('today'),
                 getCachedData('yesterday'),
                 getCachedData('week'),
-                getCachedData('month')
+                getCachedData('month'),
+                getCachedData('lastweek'),
+                getCachedData('lastmonth')
             ]);
             console.log(`[${now}] Кэш успешно обновлен`);
         } catch (error) {
